@@ -10,10 +10,13 @@ import {
   Participant,
   TrackPublication,
   RemoteParticipant,
+  Track,
   type RpcInvocationData,
 } from "livekit-client";
 import { useConnection } from "@/hooks/use-connection";
 import { useToast } from "@/hooks/use-toast";
+import { useAudioPlayback } from "@/hooks/use-audio-playback";
+
 interface Transcription {
   segment: TranscriptionSegment;
   participant?: Participant;
@@ -30,6 +33,7 @@ interface AgentContextType {
   displayTranscriptions: Transcription[];
   agent?: RemoteParticipant;
   generatedImages: GeneratedImage[];
+  playTranscript: (id: string) => void;
 }
 
 const AgentContext = createContext<AgentContextType | undefined>(undefined);
@@ -37,7 +41,7 @@ const AgentContext = createContext<AgentContextType | undefined>(undefined);
 export function AgentProvider({ children }: { children: React.ReactNode }) {
   const room = useMaybeRoomContext();
   const { shouldConnect } = useConnection();
-  const { agent } = useVoiceAssistant();
+  const { agent, audioTrack } = useVoiceAssistant(); // Get audioTrack
   const { localParticipant } = useLocalParticipant();
   const [rawSegments, setRawSegments] = useState<{
     [id: string]: Transcription;
@@ -47,6 +51,10 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
   >([]);
   const [generatedImages, setGeneratedImages] = useState<GeneratedImage[]>([]);
   const { toast } = useToast();
+
+  // Initialize audio playback with the agent's audio track
+  const agentAudioPlayback = useAudioPlayback(audioTrack?.publication?.track?.mediaStreamTrack);
+  const userAudioPlayback = useAudioPlayback(localParticipant?.getTrackPublication(Track.Source.Microphone)?.track?.mediaStreamTrack);
 
   useEffect(() => {
     if (!room) {
@@ -97,18 +105,18 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
     const handleByteStream = async (reader: any, participantInfo: any) => {
       try {
         console.log('Byte stream received:', reader.info);
-        
+
         // Get the prompt from attributes
         const prompt = reader.info.attributes?.prompt || 'Generated image';
         const timestamp = reader.info.timestamp || Date.now();
-        
+
         // Read all chunks from the stream
         const chunks = await reader.readAll();
-        
+
         // Create a blob from the chunks
         const blob = new Blob(chunks, { type: reader.info.mimeType || 'image/jpeg' });
         const imageUrl = URL.createObjectURL(blob);
-        
+
         // Add to generated images
         setGeneratedImages(prev => [
           ...prev,
@@ -118,7 +126,7 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
             timestamp
           }
         ]);
-        
+
         console.log('Image received and processed:', prompt);
       } catch (error) {
         console.error('Failed to process byte stream:', error);
@@ -162,6 +170,7 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
               text: `${last.segment.text} ${current.segment.text}`,
               id: current.segment.id, // Use the id of the latest segment
               firstReceivedTime: last.segment.firstReceivedTime, // Keep the original start time
+              lastReceivedTime: current.segment.lastReceivedTime, // Update last received time
             },
           },
         ];
@@ -180,8 +189,34 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
     }
   }, [shouldConnect]);
 
+  const playTranscript = (id: string) => {
+    const transcription = rawSegments[id];
+
+    // Find if this ID is part of a merged segment in displayTranscriptions
+    const displayedSegment = displayTranscriptions.find(t => t.segment.id === id);
+
+    // Determine which playback instance to use
+    const isAgent = displayedSegment?.participant?.isAgent ?? transcription?.participant?.isAgent ?? false;
+    const playback = isAgent ? agentAudioPlayback : userAudioPlayback;
+
+    if (displayedSegment && displayedSegment.segment.firstReceivedTime && displayedSegment.segment.lastReceivedTime) {
+      const startTime = displayedSegment.segment.firstReceivedTime;
+      const duration = displayedSegment.segment.lastReceivedTime - startTime;
+
+      const offsetMs = isAgent ? 1000 : 3000;
+      playback.playSlice(startTime - offsetMs, duration + offsetMs + 500);
+    } else if (transcription && transcription.segment.firstReceivedTime && transcription.segment.lastReceivedTime) {
+      // Fallback to raw segment
+      const startTime = transcription.segment.firstReceivedTime;
+      const duration = transcription.segment.lastReceivedTime - startTime;
+
+      const offsetMs = isAgent ? 1000 : 3000;
+      playback.playSlice(startTime - offsetMs, duration + offsetMs + 500);
+    }
+  };
+
   return (
-    <AgentContext.Provider value={{ displayTranscriptions, agent, generatedImages }}>
+    <AgentContext.Provider value={{ displayTranscriptions, agent, generatedImages, playTranscript }}>
       {children}
     </AgentContext.Provider>
   );

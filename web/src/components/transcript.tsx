@@ -2,9 +2,10 @@
 
 import { useAgent } from "@/hooks/use-agent";
 import { useEffect, useRef } from "react";
+import { Play } from "lucide-react";
 
 export function Transcript() {
-  const { displayTranscriptions } = useAgent();
+  const { displayTranscriptions, playTranscript } = useAgent();
   const transcriptEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -32,7 +33,7 @@ export function Transcript() {
         {displayTranscriptions.map((transcription) => {
           const isAgent = transcription.participant?.isAgent ?? false;
           const text = transcription.segment.text;
-          
+
           if (!text || text.trim().length === 0) {
             return null;
           }
@@ -40,19 +41,26 @@ export function Transcript() {
           return (
             <div
               key={transcription.segment.id}
-              className={`flex flex-col gap-1 ${
-                isAgent ? "items-start" : "items-end"
-              }`}
+              className={`flex flex-col gap-1 ${isAgent ? "items-start" : "items-end"
+                }`}
             >
               <div
-                className={`rounded-lg px-3 py-2 max-w-[85%] ${
-                  isAgent
-                    ? "bg-bg2 text-fg1 border border-separator1"
-                    : "bg-bg3 text-fg1 border border-separator1"
-                }`}
+                className={`rounded-lg px-3 py-2 max-w-[85%] group relative ${isAgent
+                  ? "bg-bg2 text-fg1 border border-separator1"
+                  : "bg-bg3 text-fg1 border border-separator1"
+                  }`}
               >
-                <div className="text-xs font-semibold mb-1 text-fg2 uppercase tracking-wide">
-                  {isAgent ? "Agent" : "You"}
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <div className="text-xs font-semibold text-fg2 uppercase tracking-wide">
+                    {isAgent ? "Agent" : "You"}
+                  </div>
+                  <button
+                    onClick={() => playTranscript(transcription.segment.id)}
+                    className="p-1 hover:bg-white/10 rounded-full transition-colors opacity-0 group-hover:opacity-100"
+                    title="Play audio"
+                  >
+                    <Play className="w-3 h-3 text-fg2" />
+                  </button>
                 </div>
                 <div className="text-sm leading-relaxed whitespace-pre-wrap break-words">
                   {text}

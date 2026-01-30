@@ -232,6 +232,7 @@ class SessionManager:
         await self.current_session.start(
             room=ctx.room,
             agent=self.current_agent,
+        
         )
         
         # Greet the user
