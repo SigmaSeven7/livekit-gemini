@@ -24,6 +24,7 @@ from livekit.agents import (
     utils,
 )
 from livekit.plugins import google
+from livekit.plugins import silero
 
 load_dotenv(dotenv_path=".env.local")
 
@@ -197,7 +198,7 @@ class SessionManager:
         self.ctx: JobContext | None = None
         self.participant: rtc.RemoteParticipant | None = None
         self.current_agent: PlaygroundAgent | None = None
-
+        self.vad = silero.VAD.load()
     def create_session(self, config: SessionConfig) -> AgentSession:
         """Create an AgentSession with the given configuration"""
         session = AgentSession(
@@ -208,7 +209,8 @@ class SessionManager:
                 max_output_tokens=int(config.max_response_output_tokens) if config.max_response_output_tokens != "inf" else None,
                 modalities=config.modalities,
                 api_key=config.gemini_api_key,
-            )
+            ),
+            vad=self.vad,
         )
         return session
 
@@ -232,12 +234,12 @@ class SessionManager:
         await self.current_session.start(
             room=ctx.room,
             agent=self.current_agent,
-        
+            
         )
         
         # Greet the user
         await self.current_session.generate_reply(
-            instructions="Please begin the interaction with the user in a manner consistent with your instructions."
+            instructions="Please begin the interaction with the user in a manner consistent with your instructions. STRICT RULE: Do not output any 'readiness confirmations,' meta-commentary, or introductory text like 'Confirming Response and Readiness'. Start your response immediately in Hebrew without any English preamble or status updates. Never describe your internal state."
         )
 
         # Register RPC method for config updates

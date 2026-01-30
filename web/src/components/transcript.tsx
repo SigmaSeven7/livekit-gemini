@@ -4,6 +4,8 @@ import { useAgent } from "@/hooks/use-agent";
 import { useEffect, useRef } from "react";
 import { Play } from "lucide-react";
 
+import { Typewriter } from "@/components/typewriter";
+
 export function Transcript() {
   const { displayTranscriptions, playTranscript } = useAgent();
   const transcriptEndRef = useRef<HTMLDivElement>(null);
@@ -63,7 +65,11 @@ export function Transcript() {
                   </button>
                 </div>
                 <div className="text-sm leading-relaxed whitespace-pre-wrap break-words">
-                  {text}
+                  {isAgent ? (
+                    <Typewriter text={text} speed={40} />
+                  ) : (
+                    text
+                  )}
                 </div>
               </div>
             </div>
