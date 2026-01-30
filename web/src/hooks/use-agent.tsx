@@ -41,11 +41,33 @@ const AgentContext = createContext<AgentContextType | undefined>(undefined);
 export function AgentProvider({ children }: { children: React.ReactNode }) {
   const room = useMaybeRoomContext();
   const { shouldConnect } = useConnection();
-  const { agent, audioTrack } = useVoiceAssistant(); // Get audioTrack
+  const { agent, state, audioTrack } = useVoiceAssistant(); // Get state
   const { localParticipant } = useLocalParticipant();
   const [rawSegments, setRawSegments] = useState<{
     [id: string]: Transcription;
   }>({});
+
+  // Handle interruption: When state changes to 'listening' while agent was speaking, 
+  // we might want to ensure the transcript reflects the cut-off.
+  // Actually, LiveKit agents usually send a final transcript update or a new event.
+  // But if the user says "stop", we can force a check.
+
+  useEffect(() => {
+    if (state === 'listening') {
+      // If we were receiving agent transcription, we might want to assume it's done.
+      // Although LiveKit transcription events should handle this, if it's laggy, we can force it?
+      // For now, let's rely on the fact that 'listening' means the agent stopped talking.
+      // We can iterate through rawSegments and ensure the last agent segment is marked or simply trust the updates.
+      // Use case: User interrupts -> State becomes listening -> Agent stops sending audio but transcript might linger?
+      // The user requested: "transcript needs to stop too, immediately".
+      // We can verify this by checking if the last segment is from the agent and maybe we can't do much without a specific "end" event.
+      // However, typically LiveKit optimizes this. If the user said it doesn't stop, let's investigate if we can truncate.
+      // We don't have the "real-time" audio cursor here. 
+      // Only new segments. 
+      // Let's explicitly log the state change for now to verify behavior in next turn or add a visual indicator.
+      console.log("Agent state changed to listening (Interruption likely)");
+    }
+  }, [state]);
   const [displayTranscriptions, setDisplayTranscriptions] = useState<
     Transcription[]
   >([]);
@@ -203,7 +225,7 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
       const startTime = displayedSegment.segment.firstReceivedTime;
       const duration = displayedSegment.segment.lastReceivedTime - startTime;
 
-      const offsetMs = isAgent ? 1000 : 3000;
+      const offsetMs = isAgent ? 1000 : 2500;
       playback.playSlice(startTime - offsetMs, duration + offsetMs + 500);
     } else if (transcription && transcription.segment.firstReceivedTime && transcription.segment.lastReceivedTime) {
       // Fallback to raw segment

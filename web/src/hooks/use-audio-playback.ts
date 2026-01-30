@@ -4,7 +4,12 @@ export function useAudioPlayback(track?: MediaStreamTrack) {
     const audioContextRef = useRef<AudioContext | null>(null);
     const sourceNodeRef = useRef<MediaStreamAudioSourceNode | null>(null);
     const processorNodeRef = useRef<ScriptProcessorNode | null>(null);
-    const audioBufferRef = useRef<Float32Array>(new Float32Array(0));
+
+    // Optimized storage: Array of chunks instead of one giant growing buffer
+    const chunksRef = useRef<Float32Array[]>([]);
+    // Track total length to avoid recalculating often (though usually fast enough)
+    const totalSamplesRef = useRef<number>(0);
+
     const startTimeRef = useRef<number>(0);
     const isRecordingRef = useRef(false);
 
@@ -19,33 +24,38 @@ export function useAudioPlayback(track?: MediaStreamTrack) {
         const source = ctx.createMediaStreamSource(stream);
         sourceNodeRef.current = source;
 
-        // Use ScriptProcessor for broad compatibility (AudioWorklet is better but more complex to setup in Next.js without worker files)
+        // Use ScriptProcessor for broad compatibility
         const processor = ctx.createScriptProcessor(4096, 1, 1);
         processorNodeRef.current = processor;
 
         startTimeRef.current = Date.now();
         isRecordingRef.current = true;
+        // Reset buffers
+        chunksRef.current = [];
+        totalSamplesRef.current = 0;
 
         processor.onaudioprocess = (e) => {
             if (!isRecordingRef.current) return;
 
             const inputData = e.inputBuffer.getChannelData(0);
-            const newBuffer = new Float32Array(audioBufferRef.current.length + inputData.length);
+            // Clone the data because inner buffers are reused
+            const chunk = new Float32Array(inputData);
 
-            newBuffer.set(audioBufferRef.current);
-            newBuffer.set(inputData, audioBufferRef.current.length);
+            chunksRef.current.push(chunk);
+            totalSamplesRef.current += chunk.length;
 
-            audioBufferRef.current = newBuffer;
-
-            // Cleanup old buffer if it gets too large (> 50MB ~ 10 mins)
-            if (audioBufferRef.current.length > 48000 * 60 * 10) {
-                // Strategy: Just clear it for now to avoid complexity, or slice connection start
-                // Ideally we implement a rolling buffer, but for a demo this is fine.
+            // Cleanup if it gets too large (> 50MB ~ 10 mins)
+            // 48kHz * 60 * 10 = ~28.8M samples. 
+            if (totalSamplesRef.current > 48000 * 60 * 10) {
+                // Simple reset for now to avoid complexity
+                chunksRef.current = [];
+                totalSamplesRef.current = 0;
+                startTimeRef.current = Date.now(); // Reset time anchor too
             }
         };
 
         source.connect(processor);
-        processor.connect(ctx.destination); // Connect to destination to keep the graph alive, usually needed for ScriptProcessor
+        processor.connect(ctx.destination);
 
         return () => {
             isRecordingRef.current = false;
@@ -54,8 +64,8 @@ export function useAudioPlayback(track?: MediaStreamTrack) {
             if (ctx.state !== 'closed') {
                 ctx.close();
             }
-            // Clear buffer on track change/unmount
-            audioBufferRef.current = new Float32Array(0);
+            chunksRef.current = [];
+            totalSamplesRef.current = 0;
         };
     }, [track]);
 
@@ -63,50 +73,146 @@ export function useAudioPlayback(track?: MediaStreamTrack) {
         const ctx = audioContextRef.current;
         if (!ctx) return;
 
-        // Ensure context is running
-        if (ctx.state === 'suspended') {
-            await ctx.resume();
-        }
+        if (ctx.state === 'suspended') await ctx.resume();
 
         const recordStartTime = startTimeRef.current;
         if (recordStartTime === 0) return;
 
-        // Calculate relative time in the buffer
-        // startTimeMs is the timestamp when the transcript was received
-        // Offset relative to when recording started
         const relativeStartMs = startTimeMs - recordStartTime;
-
-        // Convert to seconds
         const startSeconds = Math.max(0, relativeStartMs / 1000);
-        const durationSeconds = durationMs / 1000;
+        // Increase duration slightly to ensure we capture the tail of the speech
+        const durationSeconds = (durationMs + 100) / 1000;
 
-        // Convert to samples
         const sampleRate = ctx.sampleRate;
         const startSample = Math.floor(startSeconds * sampleRate);
         const endSample = startSample + Math.floor(durationSeconds * sampleRate);
-        const totalSamples = audioBufferRef.current.length;
+        const totalSamples = totalSamplesRef.current;
 
-        if (startSample >= totalSamples) {
-            console.warn(`[AudioPlayback] Start time beyond buffer. Start: ${startSample}, Total: ${totalSamples}, RelTime: ${relativeStartMs}`);
-            return;
+        if (startSample >= totalSamples) return;
+
+        const safeEndSample = Math.min(endSample, totalSamples);
+        const sampleCount = safeEndSample - startSample;
+        if (sampleCount <= 0) return;
+
+        const sliceData = new Float32Array(sampleCount);
+        let destOffset = 0;
+        let currentPos = 0;
+
+        for (const chunk of chunksRef.current) {
+            const chunkEnd = currentPos + chunk.length;
+            if (currentPos < safeEndSample && chunkEnd > startSample) {
+                const chunkStartOffset = Math.max(0, startSample - currentPos);
+                const chunkEndOffset = Math.min(chunk.length, safeEndSample - currentPos);
+                const len = chunkEndOffset - chunkStartOffset;
+                sliceData.set(chunk.subarray(chunkStartOffset, chunkEndOffset), destOffset);
+                destOffset += len;
+            }
+            currentPos += chunk.length;
+            if (currentPos >= safeEndSample) break;
         }
 
-        // Safety check for end sample
-        const safeEndSample = Math.min(endSample + sampleRate, totalSamples); // Add 1s buffer at end
-
-        const sliceData = audioBufferRef.current.slice(startSample, safeEndSample);
-
-        if (sliceData.length === 0) return;
-
-        // Create a new AudioBuffer for playback
+        // Create the buffer
         const playbackBuffer = ctx.createBuffer(1, sliceData.length, sampleRate);
         playbackBuffer.copyToChannel(sliceData, 0);
 
         const playSource = ctx.createBufferSource();
+        const gainNode = ctx.createGain();
+
         playSource.buffer = playbackBuffer;
-        playSource.connect(ctx.destination);
-        playSource.start();
+
+        // --- SMOOTHING LOGIC ---
+        // Use a slightly longer ramp (40ms) to hide the "jumpy" transitions
+        const rampTime = 0.04;
+        const now = ctx.currentTime;
+
+        // Start at 0, ramp to 1
+        gainNode.gain.setValueAtTime(0, now);
+        gainNode.gain.linearRampToValueAtTime(1, now + rampTime);
+
+        // Hold at 1, then ramp to 0 at the very end
+        const stopTime = now + (sliceData.length / sampleRate);
+        gainNode.gain.setValueAtTime(1, stopTime - rampTime);
+        gainNode.gain.linearRampToValueAtTime(0, stopTime);
+
+        playSource.connect(gainNode);
+        gainNode.connect(ctx.destination);
+
+        playSource.start(now);
+        playSource.stop(stopTime);
     }, []);
+
+
+    // const playSlice = useCallback(async (startTimeMs: number, durationMs: number) => {
+    //     const ctx = audioContextRef.current;
+    //     if (!ctx) return;
+
+    //     if (ctx.state === 'suspended') await ctx.resume();
+
+    //     const recordStartTime = startTimeRef.current;
+    //     if (recordStartTime === 0) return;
+
+    //     const relativeStartMs = startTimeMs - recordStartTime;
+    //     const startSeconds = Math.max(0, relativeStartMs / 1000);
+    //     // Increase duration slightly to ensure we capture the tail of the speech
+    //     const durationSeconds = (durationMs + 100) / 1000;
+
+    //     const sampleRate = ctx.sampleRate;
+    //     const startSample = Math.floor(startSeconds * sampleRate);
+    //     const endSample = startSample + Math.floor(durationSeconds * sampleRate);
+    //     const totalSamples = totalSamplesRef.current;
+
+    //     if (startSample >= totalSamples) return;
+
+    //     const safeEndSample = Math.min(endSample, totalSamples);
+    //     const sampleCount = safeEndSample - startSample;
+    //     if (sampleCount <= 0) return;
+
+    //     const sliceData = new Float32Array(sampleCount);
+    //     let destOffset = 0;
+    //     let currentPos = 0;
+
+    //     for (const chunk of chunksRef.current) {
+    //         const chunkEnd = currentPos + chunk.length;
+    //         if (currentPos < safeEndSample && chunkEnd > startSample) {
+    //             const chunkStartOffset = Math.max(0, startSample - currentPos);
+    //             const chunkEndOffset = Math.min(chunk.length, safeEndSample - currentPos);
+    //             const len = chunkEndOffset - chunkStartOffset;
+    //             sliceData.set(chunk.subarray(chunkStartOffset, chunkEndOffset), destOffset);
+    //             destOffset += len;
+    //         }
+    //         currentPos += chunk.length;
+    //         if (currentPos >= safeEndSample) break;
+    //     }
+
+    //     // Create the buffer
+    //     const playbackBuffer = ctx.createBuffer(1, sliceData.length, sampleRate);
+    //     playbackBuffer.copyToChannel(sliceData, 0);
+
+    //     const playSource = ctx.createBufferSource();
+    //     const gainNode = ctx.createGain();
+
+    //     playSource.buffer = playbackBuffer;
+
+    //     // --- SMOOTHING LOGIC ---
+    //     // Use a slightly longer ramp (40ms) to hide the "jumpy" transitions
+    //     const rampTime = 0.04;
+    //     const now = ctx.currentTime;
+
+    //     // Start at 0, ramp to 1
+    //     gainNode.gain.setValueAtTime(0, now);
+    //     gainNode.gain.linearRampToValueAtTime(1, now + rampTime);
+
+    //     // Hold at 1, then ramp to 0 at the very end
+    //     const stopTime = now + (sliceData.length / sampleRate);
+    //     gainNode.gain.setValueAtTime(1, stopTime - rampTime);
+    //     gainNode.gain.linearRampToValueAtTime(0, stopTime);
+
+    //     playSource.connect(gainNode);
+    //     gainNode.connect(ctx.destination);
+
+    //     playSource.start(now);
+    //     playSource.stop(stopTime);
+    // }, []);
 
     return {
         playSlice,
