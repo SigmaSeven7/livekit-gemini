@@ -16,6 +16,7 @@ import { useConnection } from "@/hooks/use-connection";
 import { toast } from "@/hooks/use-toast";
 import { GeminiVisualizer } from "@/components/visualizer/gemini-visualizer";
 import { NanoBananaFeed } from "@/components/nano-banana-feed";
+import { Transcript } from "@/components/transcript";
 
 export function Chat() {
   const connectionState = useConnectionState();
@@ -109,15 +110,18 @@ export function Chat() {
     </AnimatePresence>
   );
 
+
+
   return (
     <div className="flex flex-col h-full overflow-hidden p-2 lg:p-4 min-w-0">
+        <div className="my-4">{renderConnectionControl()}</div>
       <ChatControls
         showEditButton={isChatRunning}
         isEditingInstructions={isEditingInstructions}
         onToggleEdit={toggleInstructionsEdit}
       />
       <div className="flex flex-col flex-grow items-center lg:justify-between mt-12 lg:mt-0 min-w-0">
-        <div className="w-full h-full flex flex-col min-w-0 gap-4">
+        <div className="w-full h-full flex flex-col lg:flex-row min-w-0 gap-4">
           {/* Mobile: Show instructions and visualizer stacked */}
           <div className="lg:hidden w-full min-w-0 flex flex-col gap-4">
             <Instructions />
@@ -125,7 +129,7 @@ export function Chat() {
           </div>
           
           {/* Desktop: Show instructions at top, visualizer in middle */}
-          <div className="hidden lg:flex lg:flex-col lg:h-full lg:min-w-0 w-full">
+          <div className="hidden lg:flex lg:flex-col lg:h-full lg:min-w-0 lg:flex-1 w-full">
             <div className="flex items-center justify-center w-full min-w-0">
               <Instructions />
             </div>
@@ -135,6 +139,20 @@ export function Chat() {
               </div>
             </div>
           </div>
+          
+          {/* Transcript sidebar - visible on desktop when chat is running */}
+          {isChatRunning && (
+            <div className="hidden lg:flex lg:flex-col lg:w-80 lg:min-w-[320px] lg:max-w-[400px] lg:h-full border-l border-separator1 bg-bg1">
+              <Transcript />
+            </div>
+          )}
+          
+          {/* Mobile transcript - shown below visualizer */}
+          {isChatRunning && (
+            <div className="lg:hidden w-full h-64 border-t border-separator1 bg-bg1">
+              <Transcript />
+            </div>
+          )}
           
           <NanoBananaFeed />
         </div>

@@ -85,7 +85,7 @@ def parse_session_config(data: Dict[str, Any]) -> SessionConfig:
             "inf" if data.get("max_output_tokens") == "inf"
             else int(data.get("max_output_tokens") or 2048),
         modalities=SessionConfig._modalities_from_string(
-            data.get("modalities", "audio_only")
+            data.get("modalities", "text_and_audio")
         ),
         nano_banana_enabled=nano_banana_enabled,
     )
