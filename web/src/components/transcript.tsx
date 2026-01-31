@@ -7,7 +7,7 @@ import { Play } from "lucide-react";
 import { Typewriter } from "@/components/typewriter";
 
 export function Transcript() {
-  const { displayTranscriptions, playTranscript } = useAgent();
+  const { displayTranscriptions, playTranscript, state, interruptedSegmentIds } = useAgent();
   const transcriptEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -66,7 +66,12 @@ export function Transcript() {
                 </div>
                 <div className="text-sm leading-relaxed whitespace-pre-wrap break-words">
                   {isAgent ? (
-                    <Typewriter text={text} speed={40} />
+                    <Typewriter
+                      text={text}
+                      speed={60}
+                      isPaused={state !== 'speaking' && state !== 'listening'}
+                      isStopped={interruptedSegmentIds.has(transcription.segment.id)}
+                    />
                   ) : (
                     text
                   )}

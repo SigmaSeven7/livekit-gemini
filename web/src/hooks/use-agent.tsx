@@ -3,6 +3,7 @@ import {
   useMaybeRoomContext,
   useVoiceAssistant,
   useLocalParticipant,
+  useIsSpeaking,
 } from "@livekit/components-react";
 import {
   RoomEvent,
@@ -34,6 +35,8 @@ interface AgentContextType {
   agent?: RemoteParticipant;
   generatedImages: GeneratedImage[];
   playTranscript: (id: string) => void;
+  state: ReturnType<typeof useVoiceAssistant>['state'];
+  interruptedSegmentIds: Set<string>;
 }
 
 const AgentContext = createContext<AgentContextType | undefined>(undefined);
@@ -43,9 +46,11 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
   const { shouldConnect } = useConnection();
   const { agent, state, audioTrack } = useVoiceAssistant(); // Get state
   const { localParticipant } = useLocalParticipant();
+  const isUserSpeaking = useIsSpeaking(localParticipant);
   const [rawSegments, setRawSegments] = useState<{
     [id: string]: Transcription;
   }>({});
+  const [interruptedSegmentIds, setInterruptedSegmentIds] = useState<Set<string>>(new Set());
 
   // Handle interruption: When state changes to 'listening' while agent was speaking, 
   // we might want to ensure the transcript reflects the cut-off.
@@ -53,21 +58,40 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
   // But if the user says "stop", we can force a check.
 
   useEffect(() => {
-    if (state === 'listening') {
-      // If we were receiving agent transcription, we might want to assume it's done.
-      // Although LiveKit transcription events should handle this, if it's laggy, we can force it?
-      // For now, let's rely on the fact that 'listening' means the agent stopped talking.
-      // We can iterate through rawSegments and ensure the last agent segment is marked or simply trust the updates.
-      // Use case: User interrupts -> State becomes listening -> Agent stops sending audio but transcript might linger?
-      // The user requested: "transcript needs to stop too, immediately".
-      // We can verify this by checking if the last segment is from the agent and maybe we can't do much without a specific "end" event.
-      // However, typically LiveKit optimizes this. If the user said it doesn't stop, let's investigate if we can truncate.
-      // We don't have the "real-time" audio cursor here. 
-      // Only new segments. 
-      // Let's explicitly log the state change for now to verify behavior in next turn or add a visual indicator.
-      console.log("Agent state changed to listening (Interruption likely)");
+    // Only mark as interrupted if state becomes 'listening' AND the user is currently speaking.
+    // This distinguishes natural completion (user not speaking) from interruption (user speaking).
+    if (state === 'listening' && isUserSpeaking) {
+      // Agent was interrupted. Find the latest agent segment and mark it.
+      // We need to look at 'displayTranscriptions' to find the last agent segment.
+      // But we can't depend on displayTranscriptions in this effect or it might loop or be stale?
+      // Actually we can just check rawSegments logic or rely on the fact that if we are listening, the LAST segment that was actively being typed should be cut off.
+
+      // Let's use a functional update or just read the current state if available.
+      // Since displayTranscriptions is derived from rawSegments, let's find the candidate in rawSegments that looks like the "current" one.
+      // However, displayTranscriptions has the "merged" ID. 
+
+      // Better approach: When state goes to listening, find the LATEST agent segment received so far.
+      const agentSegments = Object.values(rawSegments)
+        .filter(t => t.participant?.isAgent)
+        .sort((a, b) => (b.segment.lastReceivedTime ?? 0) - (a.segment.lastReceivedTime ?? 0));
+
+      if (agentSegments.length > 0) {
+        const lastAgentSegment = agentSegments[0];
+        // Only mark if it looks recent enough? Or just always mark the last one if we are interrupted?
+        // If the agent finished speaking 10 seconds ago, we shouldn't mark it.
+        // But 'listening' implies we JUST entered this state from 'speaking' (usually).
+
+        // Let's check if the segment is effectively "live".
+        // For simplicity, we can just add the ID. If it's old, it doesn't matter if we freeze it (it's already done).
+        // If it's typing, it will stop.
+        setInterruptedSegmentIds(prev => {
+          const newSet = new Set(prev);
+          newSet.add(lastAgentSegment.segment.id);
+          return newSet;
+        });
+      }
     }
-  }, [state]);
+  }, [state, rawSegments, isUserSpeaking]); // detecting state change to listening
   const [displayTranscriptions, setDisplayTranscriptions] = useState<
     Transcription[]
   >([]);
@@ -208,6 +232,7 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
       setRawSegments({});
       setDisplayTranscriptions([]);
       setGeneratedImages([]);
+      setInterruptedSegmentIds(new Set());
     }
   }, [shouldConnect]);
 
@@ -238,7 +263,7 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AgentContext.Provider value={{ displayTranscriptions, agent, generatedImages, playTranscript }}>
+    <AgentContext.Provider value={{ displayTranscriptions, agent, generatedImages, playTranscript, state, interruptedSegmentIds }}>
       {children}
     </AgentContext.Provider>
   );
