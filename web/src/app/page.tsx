@@ -1,99 +1,55 @@
 import { Metadata } from "next";
-import { GitHubLogoIcon } from "@radix-ui/react-icons";
-import { Chat } from "@/components/chat";
+import { SetupForm } from "@/components/interview-setup/setup-form";
+
 import Heart from "@/assets/heart.svg";
-import { defaultPresets } from "@/data/presets";
-import { CodeViewer } from "@/components/code-viewer";
-import { PresetSave } from "@/components/preset-save";
-import { PresetSelector } from "@/components/preset-selector";
-import { PresetShare } from "@/components/preset-share";
+import { GitHubLogoIcon } from "@radix-ui/react-icons";
 
-export async function generateMetadata({
-  searchParams,
-}: {
-  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
-}): Promise<Metadata> {
-  let title = "LiveKit | Gemini Live API Playground";
-  let description =
-    "Speech-to-speech playground for Google's new Gemini Live API. Built on LiveKit Agents";
+export const metadata: Metadata = {
+  title: "AI Interviewer | Gemini Live",
+  description: "Advanced AI Interviewer built on Gemini Live API and LiveKit.",
+};
 
-  const params = await searchParams;
-  const presetId = params?.preset;
-  if (presetId) {
-    const selectedPreset = defaultPresets.find(
-      (preset) => preset.id === presetId
-    );
-    if (selectedPreset) {
-      title = `Gemini Live API Playground`;
-      description = `Speak to a "${selectedPreset.name}" in a speech-to-speech playground for Gemini's new Live API. Built on LiveKitAgents.`;
-    }
-  }
-
-  return {
-    title,
-    description,
-    openGraph: {
-      title,
-      description,
-      type: "website",
-      url: "https://gemini-playground-xi.vercel.app/",
-      images: [
-        {
-          url: "https://gemini-playground-xi.vercel.app/og-image.png",
-          width: 1200,
-          height: 676,
-          type: "image/png",
-          alt: title,
-        },
-      ],
-    },
-  };
-}
-
-export default function Dashboard() {
+export default function Page() {
   return (
-    <div className="flex flex-col h-screen bg-bg0 overflow-x-hidden">
-      <header className="flex flex-col md:flex-row flex-shrink-0 gap-3 md:h-16 items-center justify-between px-4 md:px-8 py-4 w-full border-b border-separator1 min-w-0">
-        <div className="flex items-center min-w-0 flex-shrink">
-          <span className="text-lg font-light truncate">
-            Gemini Live API Playground
-          </span>
+    <div className="flex flex-col min-h-screen bg-gradient-to-br from-sky-50 via-stone-50 to-sky-50/30 font-sans text-gray-800 overflow-x-hidden">
+      {/* Friendly Header */}
+      <header className="flex items-center justify-between px-8 py-6 border-b border-stone-200/40 backdrop-blur-md bg-white/60 sticky top-0 z-50">
+        <div className="flex items-center gap-3">
+          <div className="w-3 h-3 rounded-full bg-sky-200 animate-pulse"></div>
+          <span className="font-normal tracking-wide text-sm text-gray-700">✨ AI Interview Practice</span>
         </div>
-        <div className="inline-flex flex-row items-center space-x-2 flex-shrink-0">
-          <PresetSelector />
-          <PresetSave />
-          <PresetShare />
-          <CodeViewer />
+        <div className="flex items-center gap-4 text-xs font-light text-gray-500">
+          <span>v1.0.0</span>
         </div>
       </header>
-      <main className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden p-4 w-full">
-        <div className="w-full h-full flex flex-col mx-auto rounded-2xl bg-bg1 border border-separator1 min-w-0 overflow-hidden">
-          <Chat />
-        </div>
+
+      {/* Main Content */}
+      <main className="flex-1 flex flex-col items-center justify-center px-4 py-8">
+      <SetupForm />
       </main>
-      <footer className="hidden md:flex md:items-center md:gap-2 md:justify-end font-mono uppercase text-right py-3 px-8 text-xs text-fg3 w-full border-t border-separator1">
-        Built with
-        <Heart />
-        on
-        <a
-          href="https://github.com/livekit/agents"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="underline"
-        >
-          LiveKit Agents
-        </a>{" "}
-        •
+
+      {/* Friendly Footer */}
+      <footer className="py-8 border-t border-stone-200/40 text-center text-xs text-gray-500 font-light">
+        <div className="flex items-center justify-center gap-2 mb-3">
+          <span>Made with</span>
+          <Heart className="w-3 h-3 text-red-400" />
+          <span>using</span>
+          <a 
+            href="https://livekit.io" 
+            className="text-gray-600 hover:text-gray-800 transition-colors"
+          >
+            LiveKit Agents
+          </a>
+        </div>
         <a
           href="https://github.com/livekit-examples/gemini-playground"
           target="_blank"
           rel="noopener noreferrer"
-          className="underline inline-flex items-center gap-1"
+          className="inline-flex items-center gap-1.5 text-gray-500 hover:text-gray-700 transition-colors"
         >
-          <GitHubLogoIcon className="h-4 w-4" />
-          View source on GitHub
+          <GitHubLogoIcon className="w-3.5 h-3.5" />
+          <span>View Source</span>
         </a>
-        • © 2025 LiveKit
       </footer>
     </div>
   );
