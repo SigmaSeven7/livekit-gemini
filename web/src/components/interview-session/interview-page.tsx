@@ -217,14 +217,14 @@
 
 "use client";
 
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import { LiveKitRoom, RoomAudioRenderer, StartAudio, BarVisualizer, useTracks } from "@livekit/components-react";
 import { Track } from "livekit-client";
 import { InterviewConfig } from "@/data/interview-options";
 import { InterviewAgentProvider, useInterviewAgent } from "./interview-agent-provider";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { PhoneOff, Mic, MicOff, Play } from "lucide-react";
+import { PhoneOff, Mic, MicOff, Play, Loader2, CheckCircle2, XCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useLocalParticipant } from "@livekit/components-react";
 
@@ -296,16 +296,88 @@ function Transcript() {
     );
 }
 
+type EndingState = 'idle' | 'saving' | 'success' | 'error';
+
 function Controls({ onDisconnect }: { onDisconnect: () => void }) {
     const { localParticipant } = useLocalParticipant();
+    const { endInterview, conversationMessages } = useInterviewAgent();
     const [isMuted, setIsMuted] = useState(false);
+    const [endingState, setEndingState] = useState<EndingState>('idle');
+    const [savedInterviewId, setSavedInterviewId] = useState<string | null>(null);
 
     const toggleMute = () => {
         if (localParticipant) {
             localParticipant.setMicrophoneEnabled(isMuted);
             setIsMuted(!isMuted);
         }
-    }
+    };
+
+    const handleEndInterview = useCallback(async () => {
+        if (endingState !== 'idle') return;
+        
+        setEndingState('saving');
+        
+        try {
+            const result = await endInterview();
+            
+            if (result.success) {
+                setSavedInterviewId(result.interviewId);
+                setEndingState('success');
+                
+                // Wait a moment to show success state, then disconnect
+                setTimeout(() => {
+                    onDisconnect();
+                }, 1500);
+            } else {
+                setEndingState('error');
+                
+                // Allow retry after a moment
+                setTimeout(() => {
+                    setEndingState('idle');
+                }, 3000);
+            }
+        } catch (error) {
+            console.error('Error ending interview:', error);
+            setEndingState('error');
+            
+            setTimeout(() => {
+                setEndingState('idle');
+            }, 3000);
+        }
+    }, [endInterview, endingState, onDisconnect]);
+
+    const getEndButtonContent = () => {
+        switch (endingState) {
+            case 'saving':
+                return (
+                    <>
+                        <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+                        Saving Interview...
+                    </>
+                );
+            case 'success':
+                return (
+                    <>
+                        <CheckCircle2 className="h-5 w-5 mr-2" />
+                        Saved!
+                    </>
+                );
+            case 'error':
+                return (
+                    <>
+                        <XCircle className="h-5 w-5 mr-2" />
+                        Save Failed - Retry
+                    </>
+                );
+            default:
+                return (
+                    <>
+                        <PhoneOff className="h-5 w-5 mr-2" />
+                        End Interview
+                    </>
+                );
+        }
+    };
 
     return (
         <div className="w-full bg-background/80 backdrop-blur-xl border-t border-border p-6">
@@ -319,12 +391,18 @@ function Controls({ onDisconnect }: { onDisconnect: () => void }) {
                             isMuted ? "border-destructive text-destructive bg-destructive/5" : "hover:border-primary"
                         )}
                         onClick={toggleMute}
+                        disabled={endingState !== 'idle'}
                     >
                         {isMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
                     </Button>
                     
                     <div className="hidden md:block text-sm font-medium text-muted-foreground">
-                        {isMuted ? "Microphone Muted" : "Microphone Active"}
+                        {endingState === 'saving' 
+                            ? `Saving ${conversationMessages.length} messages...`
+                            : isMuted 
+                                ? "Microphone Muted" 
+                                : "Microphone Active"
+                        }
                     </div>
                 </div>
 
@@ -341,13 +419,18 @@ function Controls({ onDisconnect }: { onDisconnect: () => void }) {
 
                 <div className="flex-1 flex justify-end">
                     <Button
-                        variant="destructive"
+                        variant={endingState === 'success' ? 'secondary' : endingState === 'error' ? 'outline' : 'destructive'}
                         size="lg"
-                        className="h-12 px-6 rounded-xl font-semibold shadow-lg shadow-destructive/10 hover:shadow-destructive/20"
-                        onClick={onDisconnect}
+                        className={cn(
+                            "h-12 px-6 rounded-xl font-semibold shadow-lg transition-all",
+                            endingState === 'success' && "bg-green-600 hover:bg-green-700 shadow-green-600/20",
+                            endingState === 'error' && "border-destructive text-destructive",
+                            endingState === 'idle' && "shadow-destructive/10 hover:shadow-destructive/20"
+                        )}
+                        onClick={handleEndInterview}
+                        disabled={endingState === 'saving' || endingState === 'success'}
                     >
-                        <PhoneOff className="h-5 w-5 mr-2" />
-                        End Interview
+                        {getEndButtonContent()}
                     </Button>
                 </div>
             </div>

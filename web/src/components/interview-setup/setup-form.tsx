@@ -16,6 +16,7 @@ import {
     Users
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { 
     INTERVIEWER_ROLES, 
     INTERVIEWER_PERSONALITIES, 
@@ -40,6 +41,7 @@ export function SetupForm() {
         difficulty_level: 3,
         company_type: "Corporate/Enterprise",
         interview_language: "English",
+        gender_prompt: "Male Interviewer to Male Candidate",
         unspoken_requirements: ""
     });
 
@@ -225,6 +227,21 @@ export function SetupForm() {
                     <div className="space-y-2">
                         <label className="text-xs font-bold text-slate-400 uppercase tracking-tighter ml-1 flex items-center gap-2">
                             <EyeOff className="w-3 h-3" /> Hidden Agenda
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <button type="button" className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-slate-200 text-slate-600 hover:bg-slate-300 transition-colors">
+                                        <span className="text-[10px] font-bold">?</span>
+                                    </button>
+                                </TooltipTrigger>
+                                <TooltipContent className="max-w-xs">
+                                    <p className="text-xs mb-1">
+                                        <strong>Hidden evaluation criteria</strong> the interviewer should check for but not explicitly mention.
+                                    </p>
+                                    <p className="text-xs text-slate-600">
+                                        Example: "Check for humility, job hopper patterns, or overconfidence"
+                                    </p>
+                                </TooltipContent>
+                            </Tooltip>
                         </label>
                         <input 
                             type="text"

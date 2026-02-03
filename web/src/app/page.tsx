@@ -1,8 +1,10 @@
 import { Metadata } from "next";
 import { SetupForm } from "@/components/interview-setup/setup-form";
+import Link from "next/link";
 
 import Heart from "@/assets/heart.svg";
 import { GitHubLogoIcon } from "@radix-ui/react-icons";
+import { History } from "lucide-react";
 
 export const metadata: Metadata = {
   title: "AI Interviewer | Gemini Live",
@@ -18,8 +20,15 @@ export default function Page() {
           <div className="w-3 h-3 rounded-full bg-sky-200 animate-pulse"></div>
           <span className="font-normal tracking-wide text-sm text-gray-700">✨ AI Interview Practice</span>
         </div>
-        <div className="flex items-center gap-4 text-xs font-light text-gray-500">
-          <span>v1.0.0</span>
+        <div className="flex items-center gap-4">
+          <Link
+            href="/history"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-medium transition-colors"
+          >
+            <History className="w-4 h-4" />
+            <span>Interview History</span>
+          </Link>
+          <span className="text-xs font-light text-gray-500">v1.0.0</span>
         </div>
       </header>
 
