@@ -2,19 +2,13 @@
 
 import { useState } from "react";
 import { DemiChat } from "./demi-chat";
-import { ConversationMessage, InterviewStatus } from "@/types/conversation";
+import { InterviewStatus } from "@/types/conversation";
+import { Interview } from "@/types/interview";
 import { formatDateLong } from "@/lib/utils/date";
 import { STATUS_COLORS, STATUS_LABELS } from "@/lib/constants/interview";
 
 interface InterviewDetailProps {
-  interview: {
-    id: string;
-    createdAt: string;
-    updatedAt: string;
-    status: InterviewStatus;
-    config: Record<string, unknown> | null;
-    messages: ConversationMessage[];
-  };
+  interview: Interview;
 }
 
 export function InterviewDetail({ interview }: InterviewDetailProps) {
@@ -58,7 +52,7 @@ export function InterviewDetail({ interview }: InterviewDetailProps) {
             <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1 block">
               Messages
             </label>
-            <p className="text-sm text-slate-700">{interview.messages.length} {interview.messages.length === 1 ? 'message' : 'messages'}</p>
+            <p className="text-sm text-slate-700">{interview.transcript.length} {interview.transcript.length === 1 ? 'message' : 'messages'}</p>
           </div>
         </div>
       </div>
@@ -107,7 +101,7 @@ export function InterviewDetail({ interview }: InterviewDetailProps) {
         {showMessages && (
           <div className="mt-6 pt-6 border-t border-slate-100">
             <div className="h-[600px]">
-              <DemiChat messages={interview.messages} />
+              <DemiChat messages={interview.transcript} />
             </div>
           </div>
         )}

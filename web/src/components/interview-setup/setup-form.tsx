@@ -8,7 +8,6 @@ import {
     Sparkles, 
     User, 
     Settings2, 
-    Briefcase, 
     Languages, 
     ShieldCheck, 
     Building2, 

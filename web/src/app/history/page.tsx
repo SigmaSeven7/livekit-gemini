@@ -148,7 +148,7 @@ export default function HistoryPage() {
                     id={interview.id}
                     status={interview.status}
                     createdAt={interview.createdAt}
-                    messageCount={interview.messageCount}
+                    messageCount={interview.transcript.length}
                     config={interview.config}
                     onDelete={(id) => setInterviewToDelete(id)}
                     isDeleting={deleteInterviewMutation.isPending && deleteInterviewMutation.variables === interview.id}
@@ -173,18 +173,23 @@ export default function HistoryPage() {
 
       {/* Delete All Confirmation Dialog */}
       <AlertDialog open={showDeleteAllDialog} onOpenChange={setShowDeleteAllDialog}>
-        <AlertDialogContent>
+        <AlertDialogContent 
+          className="bg-white border border-slate-100 rounded-2xl shadow-xl"
+          overlayClassName="bg-black/20 backdrop-blur-sm"
+        >
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete All Interviews?</AlertDialogTitle>
-            <AlertDialogDescription>
+            <AlertDialogTitle className="text-slate-900">Delete All Interviews?</AlertDialogTitle>
+            <AlertDialogDescription className="text-slate-600">
               Are you sure you want to delete all {interviews.length} {interviews.length === 1 ? 'interview' : 'interviews'}? This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel className="rounded-xl border-slate-200 text-slate-700 hover:bg-slate-50">
+              Cancel
+            </AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDeleteAll}
-              className="bg-red-600 hover:bg-red-700 text-white"
+              className="bg-red-600 hover:bg-red-700 text-white rounded-xl"
             >
               Delete All
             </AlertDialogAction>
@@ -194,18 +199,23 @@ export default function HistoryPage() {
 
       {/* Delete Single Interview Confirmation Dialog */}
       <AlertDialog open={interviewToDelete !== null} onOpenChange={(open) => !open && setInterviewToDelete(null)}>
-        <AlertDialogContent>
+        <AlertDialogContent 
+          className="bg-white border border-slate-100 rounded-2xl shadow-xl"
+          overlayClassName="bg-black/20 backdrop-blur-sm"
+        >
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Interview?</AlertDialogTitle>
-            <AlertDialogDescription>
+            <AlertDialogTitle className="text-slate-900">Delete Interview?</AlertDialogTitle>
+            <AlertDialogDescription className="text-slate-600">
               Are you sure you want to delete this interview? This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel className="rounded-xl border-slate-200 text-slate-700 hover:bg-slate-50">
+              Cancel
+            </AlertDialogCancel>
             <AlertDialogAction
               onClick={() => interviewToDelete && handleDeleteInterview(interviewToDelete)}
-              className="bg-red-600 hover:bg-red-700 text-white"
+              className="bg-red-600 hover:bg-red-700 text-white rounded-xl"
             >
               Delete
             </AlertDialogAction>

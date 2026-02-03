@@ -1,17 +1,10 @@
-import { useInfiniteQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import { Interview } from '@/types/interview';
 
-export interface InterviewListItem {
-  id: string;
-  createdAt: string;
-  updatedAt: string;
-  status: 'in_progress' | 'completed' | 'paused';
-  config: Record<string, unknown> | null;
-  messageCount: number;
-  transcript: any[];
-}
+
 
 interface InterviewsResponse {
-  data: InterviewListItem[];
+  data: Interview[];
   nextCursor: string | null;
   hasMore: boolean;
 }
@@ -40,5 +33,28 @@ export function useInterviews() {
     getNextPageParam: (lastPage) => {
       return lastPage.hasMore ? lastPage.nextCursor : undefined;
     },
+  });
+}
+
+/**
+ * Hook for fetching a single interview by ID
+ * Uses TanStack Query's useQuery with 1 minute cache
+ */
+export function useInterview(id: string) {
+  return useQuery<Interview>({
+    queryKey: ['interview', id],
+    queryFn: async () => {
+      const url = new URL('/api/history', window.location.origin);
+      url.searchParams.set('id', id);
+
+      const response = await fetch(url.toString());
+     
+      if (!response.ok) {
+        throw new Error('Failed to fetch interview');
+      }
+      return response.json();
+    },
+    enabled: !!id,
+    staleTime: 60 * 1000, // 1 minute cache
   });
 }

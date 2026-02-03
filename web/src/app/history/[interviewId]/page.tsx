@@ -1,46 +1,18 @@
-import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { InterviewDetail } from "@/components/history/interview-detail";
+import { InterviewDetailContent } from "@/components/history/interview-detail-content";
+import { validate as uuidValidate } from "uuid";
+import { InterviewNotFound } from "@/components/history/interview-not-found";
 
 interface PageProps {
   params: Promise<{ interviewId: string }>;
 }
 
-async function getInterview(id: string) {
-  try {
-    // For server-side fetch, we need to use the full URL or make it a client component
-    // Since we want server-side rendering, let's import prisma directly
-    const prisma = (await import('@/lib/prisma')).default;
-    
-    const interview = await prisma.interview.findUnique({
-      where: { id },
-    });
-
-    if (!interview) {
-      return null;
-    }
-
-    return {
-      id: interview.id,
-      createdAt: interview.createdAt.toISOString(),
-      updatedAt: interview.updatedAt.toISOString(),
-      status: interview.status,
-      config: interview.config ? JSON.parse(interview.config) : null,
-      messages: JSON.parse(interview.transcript),
-    };
-  } catch (error) {
-    console.error('Error fetching interview:', error);
-    return null;
-  }
-}
-
 export default async function InterviewDetailPage({ params }: PageProps) {
   const { interviewId } = await params;
-  const interview = await getInterview(interviewId);
-
-  if (!interview) {
-    notFound();
+  console.log(interviewId);
+  if (!uuidValidate(interviewId)) {
+    return <InterviewNotFound />;
   }
 
   return (
@@ -64,7 +36,7 @@ export default async function InterviewDetailPage({ params }: PageProps) {
       {/* Main Content */}
       <main className="flex-1 px-4 sm:px-6 lg:px-8 py-8">
         <div className="max-w-4xl mx-auto">
-          <InterviewDetail interview={interview} />
+          <InterviewDetailContent interviewId={interviewId} />
         </div>
       </main>
     </div>
