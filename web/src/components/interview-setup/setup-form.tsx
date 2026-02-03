@@ -257,7 +257,7 @@ export function SetupForm() {
             {/* --- STICKY FOOTER DOCK --- */}
             <div className="fixed bottom-0 left-0 right-0 z-50 px-3 sm:px-4 md:px-6 pb-3 sm:pb-4 md:pb-8">
                 <div className="max-w-4xl mx-auto">
-                    <div className="bg-slate-900/95 backdrop-blur-xl border border-white/10 shadow-2xl rounded-2xl md:rounded-[2.5rem] p-3 sm:p-4 flex flex-col md:flex-row items-center gap-3 sm:gap-4 md:gap-6">
+                    <div className="bg-gray-900 backdrop-blur-xl border border-white/10 shadow-2xl rounded-2xl md:rounded-[2.5rem] p-3 sm:p-4 flex flex-col md:flex-row items-center gap-3 sm:gap-4 md:gap-6">
                         <div className="flex-1 flex items-center gap-3 sm:gap-4 md:gap-6 overflow-x-auto no-scrollbar px-2 sm:px-4 w-full md:w-auto min-w-0">
                             <SummaryPill label="Interviewer" value={config.interviewer_role} color="text-indigo-400" />
                             <SummaryPill label="Mode" value={config.interview_mode} color="text-emerald-400" />

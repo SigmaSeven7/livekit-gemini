@@ -47,15 +47,38 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const { searchParams } = new URL(request.url);
+    const cursor = searchParams.get('cursor');
+    const limit = parseInt(searchParams.get('limit') || '10', 10);
+
+    // Build where clause for cursor-based pagination
+    const where = cursor
+      ? {
+          createdAt: {
+            lt: new Date(cursor), // Fetch interviews older than cursor
+          },
+        }
+      : undefined;
+
     const interviews = await prisma.interview.findMany({
+      where,
       orderBy: { createdAt: 'desc' },
-      take: 50,
+      take: limit + 1, // Fetch one extra to check if there are more
     });
 
-    return NextResponse.json(
-      interviews.map((interview) => ({
+    // Check if there are more interviews
+    const hasMore = interviews.length > limit;
+    const data = hasMore ? interviews.slice(0, limit) : interviews;
+
+    // Get next cursor (oldest interview's createdAt in current page)
+    const nextCursor = data.length > 0
+      ? data[data.length - 1].createdAt.toISOString()
+      : null;
+
+    return NextResponse.json({
+      data: data.map((interview) => ({
         id: interview.id,
         createdAt: interview.createdAt,
         updatedAt: interview.updatedAt,
@@ -63,8 +86,10 @@ export async function GET() {
         config: interview.config ? JSON.parse(interview.config) : null,
         messageCount: JSON.parse(interview.transcript).length,
         transcript: JSON.parse(interview.transcript),
-      }))
-    );
+      })),
+      nextCursor: hasMore ? nextCursor : null,
+      hasMore,
+    });
   } catch (error) {
     console.error('List interviews error:', error);
     return NextResponse.json(

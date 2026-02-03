@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
 import Link from "next/link";
 import { Trash2 } from "lucide-react";
 import { InterviewStatus } from "@/types/conversation";
+import { formatDateShort } from "@/lib/utils/date";
+import { STATUS_COLORS, STATUS_LABELS } from "@/lib/constants/interview";
 
 interface InterviewCardProps {
   id: string;
@@ -16,31 +17,8 @@ interface InterviewCardProps {
 }
 
 export function InterviewCard({ id, status, createdAt, messageCount, config, onDelete, isDeleting }: InterviewCardProps) {
-  const [formattedDate, setFormattedDate] = useState<string>('');
-
-  useEffect(() => {
-    const date = typeof createdAt === 'string' ? new Date(createdAt) : createdAt;
-    const formatted = new Intl.DateTimeFormat('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-    }).format(date);
-    setFormattedDate(formatted);
-  }, [createdAt]);
-  
-  const statusColors = {
-    completed: 'bg-emerald-100 text-emerald-700 border-emerald-200',
-    in_progress: 'bg-amber-100 text-amber-700 border-amber-200',
-    paused: 'bg-slate-100 text-slate-700 border-slate-200',
-  };
-
-  const statusLabels = {
-    completed: 'Completed',
-    in_progress: 'In Progress',
-    paused: 'Paused',
-  };
+  // Derive formatted date during render (no useEffect needed)
+  const formattedDate = formatDateShort(createdAt);
 
   // Extract key config info for display
   const configSummary = config ? {
@@ -70,14 +48,14 @@ export function InterviewCard({ id, status, createdAt, messageCount, config, onD
         <div className="flex items-start justify-between mb-4">
           <div className="flex-1 min-w-0 pr-8">
             <div className="flex items-center gap-2 mb-2">
-              <span className={`px-2 py-1 rounded-lg text-xs font-semibold border ${statusColors[status]}`}>
-                {statusLabels[status]}
+              <span className={`px-2 py-1 rounded-lg text-xs font-semibold border ${STATUS_COLORS[status]}`}>
+                {STATUS_LABELS[status]}
               </span>
               <span className="text-xs text-slate-500 font-mono truncate">
                 {id.slice(0, 8)}...
               </span>
             </div>
-            <p className="text-xs text-slate-500 mb-1" suppressHydrationWarning>{formattedDate || ''}</p>
+            <p className="text-xs text-slate-500 mb-1" suppressHydrationWarning>{formattedDate}</p>
             <p className="text-sm text-slate-600">
               {messageCount} {messageCount === 1 ? 'message' : 'messages'}
             </p>

@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Play } from "lucide-react";
 import { ConversationMessage } from "@/types/conversation";
 import { playAudioFromUrl, playAudioFromBase64 } from "@/lib/audio/playback-utils";
+import { formatTimeOnly } from "@/lib/utils/date";
 
 interface DemiChatProps {
   messages: ConversationMessage[];
@@ -99,16 +100,12 @@ export function DemiChat({ messages }: DemiChatProps) {
 }
 
 function MessageTimestamp({ timestamp }: { timestamp: number }) {
-  const [formattedTime, setFormattedTime] = useState<string>('');
-
-  useEffect(() => {
-    const date = new Date(timestamp);
-    setFormattedTime(date.toLocaleTimeString());
-  }, [timestamp]);
+  // Derive formatted time during render (no useEffect needed)
+  const formattedTime = formatTimeOnly(timestamp);
 
   return (
     <div className="mt-2 text-[10px] text-slate-400">
-      {formattedTime || ''}
+      {formattedTime}
     </div>
   );
 }

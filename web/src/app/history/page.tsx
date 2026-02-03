@@ -1,53 +1,34 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Trash2 } from "lucide-react";
+import { ArrowLeft, Trash2, Loader2 } from "lucide-react";
 import { InterviewCard } from "@/components/history/interview-card";
-import { InterviewStatus } from "@/types/conversation";
-
-interface InterviewListItem {
-  id: string;
-  createdAt: string;
-  updatedAt: string;
-  status: InterviewStatus;
-  config: Record<string, unknown> | null;
-  messageCount: number;
-  transcript: any[];
-}
+import { useInterviews } from "@/hooks/use-interviews";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 export default function HistoryPage() {
-  const [interviews, setInterviews] = useState<InterviewListItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [deleting, setDeleting] = useState<string | 'all' | null>(null);
+  const queryClient = useQueryClient();
+  const { data, isLoading, error, fetchNextPage, hasNextPage, isFetchingNextPage } = useInterviews();
+  const [showDeleteAllDialog, setShowDeleteAllDialog] = useState(false);
+  const [interviewToDelete, setInterviewToDelete] = useState<string | null>(null);
 
-  const fetchInterviews = async () => {
-    try {
-      const response = await fetch('/api/interviews');
-      if (!response.ok) {
-        throw new Error('Failed to fetch interviews');
-      }
-      const data = await response.json();
-      setInterviews(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load interviews');
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Flatten paginated results
+  const interviews = data?.pages.flatMap(page => page.data) ?? [];
 
-  useEffect(() => {
-    fetchInterviews();
-  }, []);
-
-  const handleDeleteAll = async () => {
-    if (!confirm(`Are you sure you want to delete all ${interviews.length} interviews? This action cannot be undone.`)) {
-      return;
-    }
-
-    setDeleting('all');
-    try {
+  // Delete all interviews mutation
+  const deleteAllMutation = useMutation({
+    mutationFn: async () => {
       const response = await fetch('/api/interviews?confirm=true', {
         method: 'DELETE',
       });
@@ -57,21 +38,20 @@ export default function HistoryPage() {
         throw new Error(error.error || 'Failed to delete all interviews');
       }
       
-      await fetchInterviews();
-    } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to delete all interviews');
-    } finally {
-      setDeleting(null);
-    }
-  };
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['interviews'] });
+      setShowDeleteAllDialog(false);
+    },
+    onError: (err: Error) => {
+      alert(err.message || 'Failed to delete all interviews');
+    },
+  });
 
-  const handleDeleteInterview = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this interview? This action cannot be undone.')) {
-      return;
-    }
-
-    setDeleting(id);
-    try {
+  // Delete single interview mutation
+  const deleteInterviewMutation = useMutation({
+    mutationFn: async (id: string) => {
       const response = await fetch(`/api/interviews/${id}`, {
         method: 'DELETE',
       });
@@ -81,12 +61,23 @@ export default function HistoryPage() {
         throw new Error(error.error || 'Failed to delete interview');
       }
       
-      await fetchInterviews();
-    } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to delete interview');
-    } finally {
-      setDeleting(null);
-    }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['interviews'] });
+      setInterviewToDelete(null);
+    },
+    onError: (err: Error) => {
+      alert(err.message || 'Failed to delete interview');
+    },
+  });
+
+  const handleDeleteAll = () => {
+    deleteAllMutation.mutate();
+  };
+
+  const handleDeleteInterview = (id: string) => {
+    deleteInterviewMutation.mutate(id);
   };
 
   return (
@@ -110,14 +101,14 @@ export default function HistoryPage() {
       {/* Main Content */}
       <main className="flex-1 px-4 sm:px-6 lg:px-8 py-8">
         <div className="max-w-6xl mx-auto">
-          {loading ? (
+          {isLoading ? (
             <div className="flex items-center justify-center py-20">
               <div className="text-slate-500">Loading interviews...</div>
             </div>
           ) : error ? (
             <div className="bg-red-50 border border-red-200 rounded-2xl p-6 text-red-700">
               <p className="font-semibold mb-1">Error loading interviews</p>
-              <p className="text-sm">{error}</p>
+              <p className="text-sm">{error.message || 'Failed to load interviews'}</p>
             </div>
           ) : interviews.length === 0 ? (
             <div className="bg-white border border-slate-100 rounded-2xl p-12 text-center">
@@ -138,12 +129,16 @@ export default function HistoryPage() {
                   <p className="text-sm text-slate-600">{interviews.length} {interviews.length === 1 ? 'interview' : 'interviews'}</p>
                 </div>
                 <button
-                  onClick={handleDeleteAll}
-                  disabled={deleting === 'all'}
+                  onClick={() => setShowDeleteAllDialog(true)}
+                  disabled={deleteAllMutation.isPending}
                   className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white rounded-xl text-sm font-medium transition-colors"
                 >
-                  <Trash2 className="w-4 h-4" />
-                  {deleting === 'all' ? 'Deleting...' : 'Delete All'}
+                  {deleteAllMutation.isPending ? (
+                    <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+                  ) : (
+                    <Trash2 className="w-4 h-4" />
+                  )}
+                  {deleteAllMutation.isPending ? 'Deleting...' : 'Delete All'}
                 </button>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -155,15 +150,68 @@ export default function HistoryPage() {
                     createdAt={interview.createdAt}
                     messageCount={interview.messageCount}
                     config={interview.config}
-                    onDelete={handleDeleteInterview}
-                    isDeleting={deleting === interview.id}
+                    onDelete={(id) => setInterviewToDelete(id)}
+                    isDeleting={deleteInterviewMutation.isPending && deleteInterviewMutation.variables === interview.id}
                   />
                 ))}
               </div>
+              {hasNextPage && (
+                <div className="mt-6 flex justify-center">
+                  <button
+                    onClick={() => fetchNextPage()}
+                    disabled={isFetchingNextPage}
+                    className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white rounded-xl text-sm font-medium transition-colors"
+                  >
+                    {isFetchingNextPage ? 'Loading...' : 'Load More'}
+                  </button>
+                </div>
+              )}
             </>
           )}
         </div>
       </main>
+
+      {/* Delete All Confirmation Dialog */}
+      <AlertDialog open={showDeleteAllDialog} onOpenChange={setShowDeleteAllDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete All Interviews?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete all {interviews.length} {interviews.length === 1 ? 'interview' : 'interviews'}? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteAll}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              Delete All
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete Single Interview Confirmation Dialog */}
+      <AlertDialog open={interviewToDelete !== null} onOpenChange={(open) => !open && setInterviewToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Interview?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this interview? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => interviewToDelete && handleDeleteInterview(interviewToDelete)}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
