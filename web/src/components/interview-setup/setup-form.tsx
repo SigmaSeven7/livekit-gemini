@@ -1,8 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { v4 as uuidv4 } from "uuid";
 import { 
     ArrowRight, 
     Sparkles, 
@@ -12,10 +11,12 @@ import {
     ShieldCheck, 
     Building2, 
     EyeOff,
-    Users
+    Users,
+    Loader2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { ErrorDialog } from "@/components/ui/error-dialog";
 import { 
     INTERVIEWER_ROLES, 
     INTERVIEWER_PERSONALITIES, 
@@ -29,6 +30,7 @@ import {
 
 export function SetupForm() {
     const router = useRouter();
+    const [isPending, startTransition] = useTransition();
     const [config, setConfig] = useState<Partial<InterviewConfig>>({
         interviewer_role: "Tech Lead",
         interviewer_personality: "Warm & Welcoming",
@@ -44,10 +46,64 @@ export function SetupForm() {
         unspoken_requirements: ""
     });
 
-    const handleStart = () => {
-        const sessionId = uuidv4();
-        sessionStorage.setItem(`interview-config-${sessionId}`, JSON.stringify(config));
-        router.push(`/interview/${sessionId}`);
+    const [isCreating, setIsCreating] = useState(false);
+    const [showErrorDialog, setShowErrorDialog] = useState(false);
+
+    const handleStart = async () => {
+        if (isCreating) {
+            return;
+        }
+
+        setIsCreating(true);
+
+        try {
+            
+            // Create interview in database first
+            const response = await fetch('/api/interviews', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    config,
+                    status: 'in_progress' 
+                }),
+            });
+
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error('Failed to create interview:', errorText);
+                setIsCreating(false);
+                setShowErrorDialog(true);
+                return;
+            }
+
+            const interview = await response.json();
+            
+            const interviewId = interview.id;
+            if (!interviewId) {
+                console.error('No interview ID in response');
+                setIsCreating(false);
+                setShowErrorDialog(true);
+                return;
+            }
+
+            // Store config in sessionStorage for the interview page
+            sessionStorage.setItem(`interview-config-${interviewId}`, JSON.stringify(config));
+            
+            // Navigate to interview page using startTransition for reliable navigation
+            const targetUrl = `/interview/${interviewId}`;
+            
+            startTransition(() => {
+                router.push(targetUrl);
+            });
+           
+            
+        } catch (error) {
+            setShowErrorDialog(true);
+        }
+        finally {
+            setIsCreating(false);
+        }
     };
 
     const handleChange = (field: keyof InterviewConfig, value: any) => {
@@ -265,15 +321,34 @@ export function SetupForm() {
 
                         <Button 
                             onClick={handleStart}
-                            className="w-full md:w-auto px-6 sm:px-8 md:px-10 h-12 sm:h-14 rounded-full bg-white hover:bg-slate-100 text-slate-900 font-black text-xs sm:text-sm uppercase tracking-widest gap-2 sm:gap-3 transition-all shrink-0 shadow-xl"
+                            disabled={isCreating || isPending}
+                            className="w-full md:w-auto px-6 sm:px-8 md:px-10 h-12 sm:h-14 rounded-full bg-white hover:bg-slate-100 text-slate-900 font-black text-xs sm:text-sm uppercase tracking-widest gap-2 sm:gap-3 transition-all shrink-0 shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                            <span className="hidden sm:inline">Start Simulation</span>
-                            <span className="sm:hidden">Start</span>
-                            <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5" />
+                            {isCreating || isPending ? (
+                                <div className="flex items-center gap-2">
+                                    <Loader2 className="w-4 h-4 sm:w-5 sm:h-5" />
+                                    <span className="hidden sm:inline">{isPending ? 'Redirecting...' : 'Creating...'}</span>
+                                    <span className="sm:hidden">...</span>
+                                </div>
+                            ) : (
+                                <>
+                                    <span className="hidden sm:inline">Start Simulation</span>
+                                    <span className="sm:hidden">Start</span>
+                                    <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5" />
+                                </>
+                            )}
                         </Button>
                     </div>
                 </div>
             </div>
+
+            {/* Error Dialog */}
+            <ErrorDialog
+                open={showErrorDialog}
+                onOpenChange={setShowErrorDialog}
+                title="Failed to Start Interview"
+                description="We couldn't create your interview session. Please try again later or contact support at support@example.com if the problem persists."
+            />
         </div>
     );
 }

@@ -47,7 +47,13 @@ type SegmentMapping = {
     isFinalized: boolean;
 };
 
-export function InterviewAgentProvider({ children }: { children: React.ReactNode }) {
+interface InterviewAgentProviderProps {
+    children: React.ReactNode;
+    /** The interview ID from the database */
+    interviewId: string;
+}
+
+export function InterviewAgentProvider({ children, interviewId }: InterviewAgentProviderProps) {
     const room = useMaybeRoomContext();
     const { agent, state, audioTrack } = useVoiceAssistant();
     const { localParticipant } = useLocalParticipant();
@@ -57,8 +63,8 @@ export function InterviewAgentProvider({ children }: { children: React.ReactNode
     }>({});
     const [interruptedSegmentIds, setInterruptedSegmentIds] = useState<Set<string>>(new Set());
 
-    // Initialize conversation state
-    const conversation = useConversationState();
+    // Initialize conversation state with the pre-existing interview ID
+    const conversation = useConversationState({ interviewId });
 
     // Map LiveKit segment IDs to our conversation transcript IDs
     const segmentMappingRef = useRef<Map<string, SegmentMapping>>(new Map());
@@ -153,8 +159,8 @@ export function InterviewAgentProvider({ children }: { children: React.ReactNode
         };
     }, [room, conversation]);
 
-    // Helper function to finalize a segment's audio
-    const finalizeSegmentAudio = useCallback((segmentId: string, mapping: SegmentMapping) => {
+    // Helper function to finalize a segment's audio and persist to database
+    const finalizeSegmentAudio = useCallback(async (segmentId: string, mapping: SegmentMapping) => {
         // Skip already finalized segments
         if (mapping.isFinalized || finalizedSegmentsRef.current.has(segmentId)) {
             return;
@@ -177,6 +183,10 @@ export function InterviewAgentProvider({ children }: { children: React.ReactNode
             return;
         }
         
+        // Mark as finalized immediately to prevent duplicate processing
+        mapping.isFinalized = true;
+        finalizedSegmentsRef.current.add(segmentId);
+        
         // Calculate duration with offsets that account for transcription processing latency
         const startOffsetMs = isAgent ? 1500 : 3000;
         const endOffsetMs = isAgent ? 2000 : 3500;
@@ -187,14 +197,37 @@ export function InterviewAgentProvider({ children }: { children: React.ReactNode
         const playback = isAgent ? agentAudioPlayback : userAudioPlayback;
         const audioBase64 = playback.extractAudioAsBase64(adjustedStart, duration);
         
+        let audioUrl: string | null = null;
         if (audioBase64) {
             conversation.finalizeMessageAudio(mapping.transcriptId, audioBase64);
             console.log(`Finalized audio for segment ${segmentId} (${isAgent ? 'agent' : 'user'}), size: ${audioBase64.length} chars`);
+            
+            // Upload audio immediately and get URL
+            audioUrl = await conversation.uploadSingleAudio(mapping.transcriptId, audioBase64);
+            if (audioUrl) {
+                console.log(`Uploaded audio for segment ${segmentId}, url: ${audioUrl}`);
+            }
         }
         
-        // Mark as finalized
-        mapping.isFinalized = true;
-        finalizedSegmentsRef.current.add(segmentId);
+        // Construct the message directly with known values to avoid stale closure issues
+        const messageToSave: ConversationMessage = {
+            transcriptId: mapping.transcriptId,
+            interviewId: conversation.interviewId,
+            participant: isAgent ? 'agent' : 'user',
+            transcript: segment.text,
+            timestampStart: startTime,
+            timestampEnd: endTime,
+            audioBase64: null, // Already uploaded, so clear this
+            audioUrl: audioUrl,
+        };
+        
+        // Persist to database immediately (no setTimeout needed since we have all the data)
+        const success = await conversation.appendMessageToDatabase(messageToSave);
+        if (success) {
+            console.log(`Persisted message ${mapping.transcriptId} to database`);
+        } else {
+            console.warn(`Failed to persist message ${mapping.transcriptId} to database`);
+        }
     }, [rawSegments, conversation, agentAudioPlayback, userAudioPlayback]);
 
     // Track previous user speaking state
@@ -377,23 +410,44 @@ export function InterviewAgentProvider({ children }: { children: React.ReactNode
         }
     }, [rawSegments, displayTranscriptions, conversation, agentAudioPlayback, userAudioPlayback]);
 
-    // End interview handler - uploads audio and saves to database
+    // End interview handler - handles final cleanup
+    // Messages are already saved incrementally when segments finalize
     const endInterview = useCallback(async (): Promise<{ success: boolean; interviewId: string }> => {
         try {
-            console.log('Ending interview, uploading audio...');
+            console.log('Ending interview...');
             
-            // Upload all pending audio - returns updated messages with audioUrls
-            const uploadResult = await conversation.uploadPendingAudio();
-            if (!uploadResult.success) {
-                console.warn('Some audio uploads may have failed');
+            // Upload any remaining audio that wasn't uploaded during finalization
+            const pendingMessages = conversation.getMessagesForUpload();
+            if (pendingMessages.length > 0) {
+                console.log(`Uploading ${pendingMessages.length} remaining audio files...`);
+                const uploadResult = await conversation.uploadPendingAudio();
+                if (!uploadResult.success) {
+                    console.warn('Some audio uploads may have failed');
+                }
+                
+                // Save any messages that weren't persisted yet
+                for (const message of uploadResult.messages) {
+                    await conversation.appendMessageToDatabase(message);
+                }
             }
             
-            // Save to database with the updated messages (bypasses React state timing issue)
-            console.log('Saving interview to database...');
-            const saveSuccess = await conversation.saveToDatabase('completed', uploadResult.messages);
+            // Update interview status to completed
+            console.log('Marking interview as completed...');
+            const updateResponse = await fetch(`/api/interviews/${conversation.interviewId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: 'completed' }),
+            });
+            
+            const success = updateResponse.ok;
+            if (success) {
+                console.log('Interview marked as completed');
+            } else {
+                console.error('Failed to update interview status');
+            }
             
             return {
-                success: saveSuccess,
+                success,
                 interviewId: conversation.interviewId,
             };
         } catch (error) {

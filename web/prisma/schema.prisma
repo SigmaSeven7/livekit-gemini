@@ -17,4 +17,16 @@ model Interview {
   status      String   @default("in_progress") // in_progress | completed | paused
   config      String?  // JSON string of InterviewConfig
   transcript  String   @default("[]") // JSON string of ConversationMessage[]
+  
+  messageHashes MessageHash[]
+}
+
+model MessageHash {
+  id          String    @id @default(uuid())
+  interviewId String
+  contentHash String
+  interview   Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  
+  @@unique([interviewId, contentHash])
+  @@index([interviewId])
 }

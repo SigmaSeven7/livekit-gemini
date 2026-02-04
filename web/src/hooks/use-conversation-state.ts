@@ -10,8 +10,8 @@ import { v4 as uuidv4 } from 'uuid';
 import { ConversationMessage, BatchUploadRequest, BatchUploadResponse } from '@/types/conversation';
 
 export interface UseConversationStateOptions {
-  /** Pre-existing interview ID (for resuming) */
-  interviewId?: string;
+  /** The interview ID from the database (required) */
+  interviewId: string;
 }
 
 export interface UseConversationStateReturn {
@@ -85,10 +85,27 @@ export interface UseConversationStateReturn {
    * Gets a message by its transcript ID
    */
   getMessage(transcriptId: string): ConversationMessage | undefined;
+
+  /**
+   * Appends a finalized message to the database with deduplication.
+   * Uses content hash to prevent duplicate storage.
+   * @param message - The complete message to persist
+   * @returns Promise resolving to true if successful (including duplicates)
+   */
+  appendMessageToDatabase(message: ConversationMessage): Promise<boolean>;
+
+  /**
+   * Uploads a single audio file and returns the URL.
+   * Also updates the message in state with the audioUrl.
+   * @param transcriptId - The transcript ID for the message
+   * @param audioBase64 - The base64-encoded audio data
+   * @returns Promise resolving to the audio URL or null if failed
+   */
+  uploadSingleAudio(transcriptId: string, audioBase64: string): Promise<string | null>;
 }
 
-export function useConversationState(options?: UseConversationStateOptions): UseConversationStateReturn {
-  const [interviewId] = useState(() => options?.interviewId ?? uuidv4());
+export function useConversationState(options: UseConversationStateOptions): UseConversationStateReturn {
+  const [interviewId] = useState(() => options.interviewId);
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
   
   // Use ref to track message IDs for deduplication
@@ -280,6 +297,64 @@ export function useConversationState(options?: UseConversationStateOptions): Use
     return messages.find(msg => msg.transcriptId === transcriptId);
   }, [messages]);
 
+  const appendMessageToDatabase = useCallback(async (message: ConversationMessage): Promise<boolean> => {
+    try {
+      const response = await fetch(`/api/interviews/${interviewId}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message }),
+      });
+
+      if (!response.ok) {
+        console.error('Failed to append message:', await response.text());
+        return false;
+      }
+
+      const result = await response.json();
+      if (result.duplicate) {
+        console.log('Message already exists in DB, skipping duplicate');
+      }
+      return true;
+    } catch (error) {
+      console.error('Error appending message to database:', error);
+      return false;
+    }
+  }, [interviewId]);
+
+  const uploadSingleAudio = useCallback(async (transcriptId: string, audioBase64: string): Promise<string | null> => {
+    try {
+      const response = await fetch('/api/audio/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          interviewId,
+          transcriptId,
+          audioBase64,
+        }),
+      });
+
+      if (!response.ok) {
+        console.error('Failed to upload audio:', await response.text());
+        return null;
+      }
+
+      const result = await response.json();
+      if (result.success && result.url) {
+        // Update the message in state with the audioUrl and clear audioBase64
+        setMessages(prev => prev.map(msg =>
+          msg.transcriptId === transcriptId
+            ? { ...msg, audioUrl: result.url, audioBase64: null }
+            : msg
+        ));
+        return result.url;
+      }
+      return null;
+    } catch (error) {
+      console.error('Error uploading single audio:', error);
+      return null;
+    }
+  }, [interviewId]);
+
   return {
     messages,
     interviewId,
@@ -294,5 +369,7 @@ export function useConversationState(options?: UseConversationStateOptions): Use
     loadFromJSON,
     clear,
     getMessage,
+    appendMessageToDatabase,
+    uploadSingleAudio,
   };
 }
