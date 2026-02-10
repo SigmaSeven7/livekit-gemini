@@ -29,11 +29,11 @@ interface AgentContextType {
     state: ReturnType<typeof useVoiceAssistant>['state'];
     interruptedSegmentIds: Set<string>;
     playTranscript: (id: string) => void;
-    
+
     // Conversation state
     conversation: UseConversationStateReturn;
     conversationMessages: ConversationMessage[];
-    
+
     // End interview handler
     endInterview: () => Promise<{ success: boolean; interviewId: string }>;
 }
@@ -65,19 +65,19 @@ export function InterviewAgentProvider({ children, interviewId }: InterviewAgent
 
     // Initialize conversation state with the pre-existing interview ID
     const conversation = useConversationState({ interviewId });
-    
+
     // Extract stable callback references to avoid effect re-runs
     const { addMessage, updateMessage } = conversation;
 
     // Map LiveKit segment IDs to our conversation transcript IDs
     const segmentMappingRef = useRef<Map<string, SegmentMapping>>(new Map());
-    
+
     // Track which segments have had their audio finalized
     const finalizedSegmentsRef = useRef<Set<string>>(new Set());
-    
+
     // Track previous agent state to detect state changes
     const prevAgentStateRef = useRef<string | null>(null);
-    
+
     // Track timeout IDs for cleanup on unmount
     const timeoutRefs = useRef<Set<NodeJS.Timeout>>(new Set());
 
@@ -130,22 +130,22 @@ export function InterviewAgentProvider({ children, interviewId }: InterviewAgent
         if (!room) {
             return;
         }
-        
+
         const updateRawSegments = (
             segments: TranscriptionSegment[],
             participant?: Participant,
             publication?: TrackPublication,
         ) => {
             const now = Date.now();
-            
+
             setRawSegments((prev) => {
                 const newSegments = { ...prev };
                 for (const segment of segments) {
                     newSegments[segment.id] = { segment, participant, publication };
-                    
+
                     // Check if this segment already exists in our conversation
                     const mapping = segmentMappingRef.current.get(segment.id);
-                    
+
                     if (!mapping) {
                         // New segment - add to conversation
                         const participantType = participant?.isAgent ? 'agent' : 'user';
@@ -155,7 +155,7 @@ export function InterviewAgentProvider({ children, interviewId }: InterviewAgent
                             timestampStart: segment.firstReceivedTime ?? now,
                             timestampEnd: segment.lastReceivedTime ?? now,
                         });
-                        
+
                         segmentMappingRef.current.set(segment.id, {
                             transcriptId,
                             lastUpdated: now,
@@ -167,15 +167,23 @@ export function InterviewAgentProvider({ children, interviewId }: InterviewAgent
                             transcript: segment.text,
                             timestampEnd: segment.lastReceivedTime ?? now,
                         });
-                        
+
                         mapping.lastUpdated = now;
                         mapping.isFinalized = false;
+
+                        // IMPORTANT: Remove from finalized set to allow re-evaluation
+                        // This ensures that if the transcript text changes after a timeout-based finalization,
+                        // it will be picked up again by the interval loop or state change handlers
+                        if (finalizedSegmentsRef.current.has(segment.id)) {
+                            console.log(`Segment ${segment.id} updated after finalization, clearing finalized status`);
+                            finalizedSegmentsRef.current.delete(segment.id);
+                        }
                     }
                 }
                 return newSegments;
             });
         };
-        
+
         room.on(RoomEvent.TranscriptionReceived, updateRawSegments);
 
         return () => {
@@ -185,70 +193,88 @@ export function InterviewAgentProvider({ children, interviewId }: InterviewAgent
 
     // Helper function to finalize a segment's audio and persist to database
     const finalizeSegmentAudio = useCallback(async (segmentId: string, mapping: SegmentMapping) => {
-        // Skip already finalized segments
-        if (mapping.isFinalized || finalizedSegmentsRef.current.has(segmentId)) {
-            return;
-        }
-        
         // Get the segment data
         const transcription = rawSegments[segmentId];
         if (!transcription?.segment) {
             return;
         }
-        
+
         const { segment, participant } = transcription;
         const isAgent = participant?.isAgent ?? false;
-        
+
+        // Check if we've already finalized this segment
+        const isAlreadyFinalized = mapping.isFinalized || finalizedSegmentsRef.current.has(segmentId);
+
+        // If already finalized, check if the text has changed
+        if (isAlreadyFinalized) {
+            const existingMessage = conversation.getMessage(mapping.transcriptId);
+            if (existingMessage && existingMessage.transcript === segment.text) {
+                // Content hasn't changed, no need to re-save
+                return;
+            }
+            console.log(`Segment ${segmentId} text updated after finalization, updating DB...`);
+        }
+
         // Get timestamps
         const startTime = segment.firstReceivedTime;
         const endTime = segment.lastReceivedTime;
-        
+
         if (!startTime || !endTime) {
             return;
         }
-        
-        // Mark as finalized immediately to prevent duplicate processing
+
+        // Mark as finalized to prevent duplicate processing (unless text changes again)
         mapping.isFinalized = true;
         finalizedSegmentsRef.current.add(segmentId);
-        
-        // Calculate duration with offsets that account for transcription processing latency
-        const startOffsetMs = isAgent ? 1500 : 3000;
-        const endOffsetMs = isAgent ? 2000 : 3500;
-        const adjustedStart = startTime - startOffsetMs;
-        const duration = (endTime - startTime) + startOffsetMs + endOffsetMs;
-        
-        // Extract audio based on participant type
-        const playback = isAgent ? agentAudioPlayback : userAudioPlayback;
-        const audioBase64 = playback.extractAudioAsBase64(adjustedStart, duration);
-        
+
         let audioUrl: string | null = null;
-        if (audioBase64) {
-            conversation.finalizeMessageAudio(mapping.transcriptId, audioBase64);
-            console.log(`Finalized audio for segment ${segmentId} (${isAgent ? 'agent' : 'user'}), size: ${audioBase64.length} chars`);
-            
-            // Upload audio immediately and get URL
-            audioUrl = await conversation.uploadSingleAudio(mapping.transcriptId, audioBase64);
-            if (audioUrl) {
-                console.log(`Uploaded audio for segment ${segmentId}, url: ${audioUrl}`);
+
+        // Only extract and upload audio if it hasn't been done yet
+        const existingMessage = conversation.getMessage(mapping.transcriptId);
+        if (existingMessage?.audioUrl) {
+            audioUrl = existingMessage.audioUrl;
+        } else if (existingMessage?.audioBase64) {
+            // Already has base64 but maybe not URL?
+            // calculate duration/offsets only if we need to extract new audio
+        } else {
+            // Calculate duration with offsets that account for transcription processing latency
+            const startOffsetMs = isAgent ? 1500 : 3000;
+            const endOffsetMs = isAgent ? 2000 : 3000;
+            const adjustedStart = startTime - startOffsetMs;
+            const duration = (endTime - startTime) + startOffsetMs + endOffsetMs;
+
+            // Extract audio based on participant type
+            const playback = isAgent ? agentAudioPlayback : userAudioPlayback;
+            const audioBase64 = playback.extractAudioAsBase64(adjustedStart, duration);
+
+            if (audioBase64) {
+                conversation.finalizeMessageAudio(mapping.transcriptId, audioBase64);
+                console.log(`Finalized audio for segment ${segmentId} (${isAgent ? 'agent' : 'user'}), size: ${audioBase64.length} chars`);
+
+                // Upload audio immediately and get URL
+                audioUrl = await conversation.uploadSingleAudio(mapping.transcriptId, audioBase64);
+                if (audioUrl) {
+                    console.log(`Uploaded audio for segment ${segmentId}, url: ${audioUrl}`);
+                }
             }
         }
-        
-        // Construct the message directly with known values to avoid stale closure issues
+
+        // Construct the message directly with known values
         const messageToSave: ConversationMessage = {
             transcriptId: mapping.transcriptId,
             interviewId: conversation.interviewId,
             participant: isAgent ? 'agent' : 'user',
-            transcript: segment.text,
+            transcript: segment.text, // Use LATEST text
             timestampStart: startTime,
             timestampEnd: endTime,
-            audioBase64: null, // Already uploaded, so clear this
+            audioBase64: null, // Already uploaded or stored in state, so clear this for DB save (url is enough)
             audioUrl: audioUrl,
         };
-        
-        // Persist to database immediately (no setTimeout needed since we have all the data)
+
+        // Persist to database immediately (UPSERT)
         const success = await conversation.appendMessageToDatabase(messageToSave);
         if (success) {
-            console.log(`Persisted message ${mapping.transcriptId} to database`);
+            console.log(`Persisted message ${mapping.transcriptId} to database (Upsert)`);
         } else {
             console.warn(`Failed to persist message ${mapping.transcriptId} to database`);
         }
@@ -264,29 +290,29 @@ export function InterviewAgentProvider({ children, interviewId }: InterviewAgent
     // 4. Fallback: 10 seconds after last update (safety net)
     useEffect(() => {
         const FALLBACK_DELAY = 10000; // 10 seconds fallback
-        
+
         const interval = setInterval(() => {
             const now = Date.now();
-            
+
             segmentMappingRef.current.forEach((mapping, segmentId) => {
                 if (mapping.isFinalized || finalizedSegmentsRef.current.has(segmentId)) {
                     return;
                 }
-                
+
                 const transcription = rawSegments[segmentId];
                 if (!transcription?.segment) {
                     return;
                 }
-                
+
                 const { segment } = transcription;
-                
+
                 // Condition 1: LiveKit marked the segment as final
                 if (segment.final) {
                     console.log(`Segment ${segmentId} marked final by LiveKit`);
                     finalizeSegmentAudio(segmentId, mapping);
                     return;
                 }
-                
+
                 // Condition 4 (fallback): Segment hasn't been updated in 10 seconds
                 if (now - mapping.lastUpdated > FALLBACK_DELAY) {
                     console.log(`Segment ${segmentId} finalized by timeout fallback`);
@@ -294,7 +320,7 @@ export function InterviewAgentProvider({ children, interviewId }: InterviewAgent
                 }
             });
         }, 500);
-        
+
         return () => clearInterval(interval);
     }, [rawSegments, finalizeSegmentAudio]);
 
@@ -302,23 +328,23 @@ export function InterviewAgentProvider({ children, interviewId }: InterviewAgent
     useEffect(() => {
         const prevState = prevAgentStateRef.current;
         prevAgentStateRef.current = state;
-        
+
         // Detect when agent transitions from speaking to listening
         if (prevState === 'speaking' && state === 'listening') {
             console.log('Agent stopped speaking, finalizing pending agent segments...');
-            
+
             // Small delay to ensure all transcription events have arrived
             safeTimeout(() => {
                 segmentMappingRef.current.forEach((mapping, segmentId) => {
                     if (mapping.isFinalized || finalizedSegmentsRef.current.has(segmentId)) {
                         return;
                     }
-                    
+
                     const transcription = rawSegments[segmentId];
                     if (!transcription?.segment || !transcription?.participant?.isAgent) {
                         return;
                     }
-                    
+
                     console.log(`Finalizing agent segment ${segmentId} due to state change`);
                     finalizeSegmentAudio(segmentId, mapping);
                 });
@@ -330,24 +356,24 @@ export function InterviewAgentProvider({ children, interviewId }: InterviewAgent
     useEffect(() => {
         const wasUserSpeaking = prevUserSpeakingRef.current;
         prevUserSpeakingRef.current = isUserSpeaking;
-        
+
         // Detect when user transitions from speaking to not speaking
         if (wasUserSpeaking && !isUserSpeaking) {
             console.log('User stopped speaking, finalizing pending user segments...');
-            
+
             // Delay to ensure transcription is complete
             safeTimeout(() => {
                 segmentMappingRef.current.forEach((mapping, segmentId) => {
                     if (mapping.isFinalized || finalizedSegmentsRef.current.has(segmentId)) {
                         return;
                     }
-                    
+
                     const transcription = rawSegments[segmentId];
                     // Only finalize user segments (not agent)
                     if (!transcription?.segment || transcription?.participant?.isAgent) {
                         return;
                     }
-                    
+
                     console.log(`Finalizing user segment ${segmentId} due to user stopped speaking`);
                     finalizeSegmentAudio(segmentId, mapping);
                 });
@@ -424,7 +450,7 @@ export function InterviewAgentProvider({ children, interviewId }: InterviewAgent
         // Use large offsets to account for transcription processing latency
         // const startOffsetMs = isAgent ? 1500 : 3000;  // Buffer before first word
         // const endOffsetMs = isAgent ? 2000 : 3500;    // Buffer AFTER lastReceivedTime
-        
+
         // if (displayedSegment && displayedSegment.segment.firstReceivedTime && displayedSegment.segment.lastReceivedTime) {
         //     const startTime = displayedSegment.segment.firstReceivedTime;
         //     const duration = displayedSegment.segment.lastReceivedTime - startTime;
@@ -441,7 +467,7 @@ export function InterviewAgentProvider({ children, interviewId }: InterviewAgent
     const endInterview = useCallback(async (): Promise<{ success: boolean; interviewId: string }> => {
         try {
             console.log('Ending interview...');
-            
+
             // Upload any remaining audio that wasn't uploaded during finalization
             const pendingMessages = conversation.getMessagesForUpload();
             if (pendingMessages.length > 0) {
@@ -450,13 +476,13 @@ export function InterviewAgentProvider({ children, interviewId }: InterviewAgent
                 if (!uploadResult.success) {
                     console.warn('Some audio uploads may have failed');
                 }
-                
+
                 // Save any messages that weren't persisted yet
                 for (const message of uploadResult.messages) {
                     await conversation.appendMessageToDatabase(message);
                 }
             }
-            
+
             // Update interview status to completed
             console.log('Marking interview as completed...');
             const updateResponse = await fetch(`/api/interviews/${conversation.interviewId}`, {
@@ -464,14 +490,14 @@ export function InterviewAgentProvider({ children, interviewId }: InterviewAgent
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ status: 'completed' }),
             });
-            
+
             const success = updateResponse.ok;
             if (success) {
                 console.log('Interview marked as completed');
             } else {
                 console.error('Failed to update interview status');
             }
-            
+
             return {
                 success,
                 interviewId: conversation.interviewId,

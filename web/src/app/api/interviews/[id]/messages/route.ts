@@ -63,47 +63,72 @@ export async function POST(
       );
     }
 
-    // Generate content hash for deduplication
-    const contentHash = generateContentHash(id, message.transcript);
+    // Check if message with this transcriptId already exists in the transcript
+    const existingMessages: ConversationMessage[] = JSON.parse(interview.transcript);
+    const existingMessageIndex = existingMessages.findIndex(m => m.transcriptId === message.transcriptId);
 
-    // Check if this message hash already exists for this interview
-    const existingHash = await prisma.messageHash.findUnique({
-      where: {
-        interviewId_contentHash: {
+    let updatedMessages: ConversationMessage[];
+
+    if (existingMessageIndex !== -1) {
+      // Update existing message
+      updatedMessages = [...existingMessages];
+      updatedMessages[existingMessageIndex] = {
+        ...updatedMessages[existingMessageIndex],
+        transcript: message.transcript,
+        timestampEnd: message.timestampEnd, // Update timestampEnd as well
+        // We preserve other fields like audioUrl/audioBase64 from the existing message if not provided in the update
+        // But here we assume the client sends the authoritative state for these fields if they are handling audio
+      };
+      // If the incoming message has audio info, update it. If not, maybe keep existing?
+      // For now, let's assume the client sends the full object or we merge carefully.
+      // Actually, the client sends the full object.
+      updatedMessages[existingMessageIndex] = message;
+
+      console.log(`Updating existing message ${message.transcriptId}`);
+    } else {
+      // Append new message
+      updatedMessages = [...existingMessages, message];
+      console.log(`Appending new message ${message.transcriptId}`);
+
+      // Only check for content hash duplication if it's a NEW message
+      // Generate content hash for deduplication
+      const contentHash = generateContentHash(id, message.transcript);
+
+      // Check if this message hash already exists for this interview
+      const existingHash = await prisma.messageHash.findUnique({
+        where: {
+          interviewId_contentHash: {
+            interviewId: id,
+            contentHash,
+          },
+        },
+      });
+
+      if (existingHash) {
+        // Message content already exists (duplicate), skip storing
+        return NextResponse.json({
+          success: true,
+          duplicate: true,
+          messageCount: existingMessages.length,
+        });
+      }
+
+      // Create hash for the new message
+      await prisma.messageHash.create({
+        data: {
           interviewId: id,
           contentHash,
         },
-      },
-    });
-
-    if (existingHash) {
-      // Message already exists, skip storing
-      return NextResponse.json({
-        success: true,
-        duplicate: true,
-        messageCount: JSON.parse(interview.transcript).length,
       });
     }
 
-    // Parse existing messages and append new one
-    const existingMessages: ConversationMessage[] = JSON.parse(interview.transcript);
-    const updatedMessages = [...existingMessages, message];
-
-    // Use transaction to atomically create hash and update transcript
-    await prisma.$transaction([
-      prisma.messageHash.create({
-        data: {
-          interviewId: id,
-          contentHash,
-        },
-      }),
-      prisma.interview.update({
-        where: { id },
-        data: {
-          transcript: JSON.stringify(updatedMessages),
-        },
-      }),
-    ]);
+    // Update the interview transcript
+    await prisma.interview.update({
+      where: { id },
+      data: {
+        transcript: JSON.stringify(updatedMessages),
+      },
+    });
 
     return NextResponse.json({
       success: true,

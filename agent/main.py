@@ -213,7 +213,7 @@ class SessionManager:
         self.ctx: JobContext | None = None
         self.participant: rtc.RemoteParticipant | None = None
         self.current_agent: PlaygroundAgent | None = None
-        self.vad = silero.VAD.load()
+        self.vad = silero.VAD.load(min_silence_duration=1.0)
 
     def create_session(self, config: SessionConfig) -> AgentSession:
 
@@ -231,10 +231,11 @@ class SessionManager:
                 #modalities=['TEXT', 'AUDIO'],
                 api_key=config.gemini_api_key,
                 thinking_config=types.ThinkingConfig(
-                include_thoughts=False  # This captures reasoning in a separate field
-                 ),
+                    include_thoughts=False  # This captures reasoning in a separate field
+                ),
             ),
             vad=self.vad,
+            turn_detection="vad",
         )
         return session
 
@@ -261,12 +262,18 @@ class SessionManager:
         )
         
         # Greet the user
-       # Greet the user - updated with strict formatting constraints
-        await self.current_session.generate_reply(
-            instructions=(
-                "Start the conversation by greeting the user and presenting yourself as the interviewer. Then ask the first question based on both the interviewer role and personality as well as the interviewee's role and personality."
-            )
-        )
+        await asyncio.sleep(1)
+        for i in range(3):
+            try:
+                await self.current_session.generate_reply(
+                    instructions=(
+                        "Start the conversation by greeting the user and presenting yourself as the interviewer. Then ask the first question based on both the interviewer role and personality as well as the interviewee's role and personality."
+                    )
+                )
+                break
+            except Exception as e:
+                logger.warning(f"failed to generate reply (attempt {i+1}): {e}")
+                await asyncio.sleep(1)
 
         @ctx.room.local_participant.register_rpc_method("pg.updateConfig")
         async def update_config(data: rtc.rpc.RpcInvocationData):
