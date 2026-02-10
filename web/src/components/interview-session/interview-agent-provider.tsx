@@ -65,6 +65,9 @@ export function InterviewAgentProvider({ children, interviewId }: InterviewAgent
 
     // Initialize conversation state with the pre-existing interview ID
     const conversation = useConversationState({ interviewId });
+    
+    // Extract stable callback references to avoid effect re-runs
+    const { addMessage, updateMessage } = conversation;
 
     // Map LiveKit segment IDs to our conversation transcript IDs
     const segmentMappingRef = useRef<Map<string, SegmentMapping>>(new Map());
@@ -74,10 +77,31 @@ export function InterviewAgentProvider({ children, interviewId }: InterviewAgent
     
     // Track previous agent state to detect state changes
     const prevAgentStateRef = useRef<string | null>(null);
+    
+    // Track timeout IDs for cleanup on unmount
+    const timeoutRefs = useRef<Set<NodeJS.Timeout>>(new Set());
 
     // Initialize audio playback with the agent's audio track
     const agentAudioPlayback = useAudioPlayback(audioTrack?.publication?.track?.mediaStreamTrack);
     const userAudioPlayback = useAudioPlayback(localParticipant?.getTrackPublication(Track.Source.Microphone)?.track?.mediaStreamTrack);
+
+    // Helper to create tracked timeouts that are cleaned up on unmount
+    const safeTimeout = useCallback((fn: () => void, delay: number) => {
+        const id = setTimeout(() => {
+            timeoutRefs.current.delete(id);
+            fn();
+        }, delay);
+        timeoutRefs.current.add(id);
+        return id;
+    }, []);
+
+    // Cleanup all pending timeouts on unmount
+    useEffect(() => {
+        return () => {
+            timeoutRefs.current.forEach(clearTimeout);
+            timeoutRefs.current.clear();
+        };
+    }, []);
 
     // Handle interruption detection
     useEffect(() => {
@@ -125,7 +149,7 @@ export function InterviewAgentProvider({ children, interviewId }: InterviewAgent
                     if (!mapping) {
                         // New segment - add to conversation
                         const participantType = participant?.isAgent ? 'agent' : 'user';
-                        const transcriptId = conversation.addMessage({
+                        const transcriptId = addMessage({
                             participant: participantType,
                             transcript: segment.text,
                             timestampStart: segment.firstReceivedTime ?? now,
@@ -139,7 +163,7 @@ export function InterviewAgentProvider({ children, interviewId }: InterviewAgent
                         });
                     } else {
                         // Existing segment - update it
-                        conversation.updateMessage(mapping.transcriptId, {
+                        updateMessage(mapping.transcriptId, {
                             transcript: segment.text,
                             timestampEnd: segment.lastReceivedTime ?? now,
                         });
@@ -157,7 +181,7 @@ export function InterviewAgentProvider({ children, interviewId }: InterviewAgent
         return () => {
             room.off(RoomEvent.TranscriptionReceived, updateRawSegments);
         };
-    }, [room, conversation]);
+    }, [room, addMessage, updateMessage]);
 
     // Helper function to finalize a segment's audio and persist to database
     const finalizeSegmentAudio = useCallback(async (segmentId: string, mapping: SegmentMapping) => {
@@ -284,7 +308,7 @@ export function InterviewAgentProvider({ children, interviewId }: InterviewAgent
             console.log('Agent stopped speaking, finalizing pending agent segments...');
             
             // Small delay to ensure all transcription events have arrived
-            setTimeout(() => {
+            safeTimeout(() => {
                 segmentMappingRef.current.forEach((mapping, segmentId) => {
                     if (mapping.isFinalized || finalizedSegmentsRef.current.has(segmentId)) {
                         return;
@@ -300,7 +324,7 @@ export function InterviewAgentProvider({ children, interviewId }: InterviewAgent
                 });
             }, 500);
         }
-    }, [state, rawSegments, finalizeSegmentAudio]);
+    }, [state, rawSegments, finalizeSegmentAudio, safeTimeout]);
 
     // Finalize user segments when user stops speaking
     useEffect(() => {
@@ -312,7 +336,7 @@ export function InterviewAgentProvider({ children, interviewId }: InterviewAgent
             console.log('User stopped speaking, finalizing pending user segments...');
             
             // Delay to ensure transcription is complete
-            setTimeout(() => {
+            safeTimeout(() => {
                 segmentMappingRef.current.forEach((mapping, segmentId) => {
                     if (mapping.isFinalized || finalizedSegmentsRef.current.has(segmentId)) {
                         return;
@@ -329,7 +353,7 @@ export function InterviewAgentProvider({ children, interviewId }: InterviewAgent
                 });
             }, 1000); // Wait 1s for user transcription to complete
         }
-    }, [isUserSpeaking, rawSegments, finalizeSegmentAudio]);
+    }, [isUserSpeaking, rawSegments, finalizeSegmentAudio, safeTimeout]);
 
     // Merge segments for display (same logic as before)
     useEffect(() => {
@@ -389,25 +413,27 @@ export function InterviewAgentProvider({ children, interviewId }: InterviewAgent
                 return;
             }
             if (message?.audioUrl) {
-                // TODO: Fetch and play from URL
-                // For now, fall back to live buffer
+                // Play from URL using Audio API
+                const audio = new Audio(message.audioUrl);
+                audio.play().catch(err => console.error('Failed to play audio from URL:', err));
+                return;
             }
         }
 
         // Fallback to live buffer playback
         // Use large offsets to account for transcription processing latency
-        const startOffsetMs = isAgent ? 1500 : 3000;  // Buffer before first word
-        const endOffsetMs = isAgent ? 2000 : 3500;    // Buffer AFTER lastReceivedTime
+        // const startOffsetMs = isAgent ? 1500 : 3000;  // Buffer before first word
+        // const endOffsetMs = isAgent ? 2000 : 3500;    // Buffer AFTER lastReceivedTime
         
-        if (displayedSegment && displayedSegment.segment.firstReceivedTime && displayedSegment.segment.lastReceivedTime) {
-            const startTime = displayedSegment.segment.firstReceivedTime;
-            const duration = displayedSegment.segment.lastReceivedTime - startTime;
-            playback.playSlice(startTime - startOffsetMs, duration + startOffsetMs + endOffsetMs);
-        } else if (transcription && transcription.segment.firstReceivedTime && transcription.segment.lastReceivedTime) {
-            const startTime = transcription.segment.firstReceivedTime;
-            const duration = transcription.segment.lastReceivedTime - startTime;
-            playback.playSlice(startTime - startOffsetMs, duration + startOffsetMs + endOffsetMs);
-        }
+        // if (displayedSegment && displayedSegment.segment.firstReceivedTime && displayedSegment.segment.lastReceivedTime) {
+        //     const startTime = displayedSegment.segment.firstReceivedTime;
+        //     const duration = displayedSegment.segment.lastReceivedTime - startTime;
+        //     playback.playSlice(startTime - startOffsetMs, duration + startOffsetMs + endOffsetMs);
+        // } else if (transcription && transcription.segment.firstReceivedTime && transcription.segment.lastReceivedTime) {
+        //     const startTime = transcription.segment.firstReceivedTime;
+        //     const duration = transcription.segment.lastReceivedTime - startTime;
+        //     playback.playSlice(startTime - startOffsetMs, duration + startOffsetMs + endOffsetMs);
+        // }
     }, [rawSegments, displayTranscriptions, conversation, agentAudioPlayback, userAudioPlayback]);
 
     // End interview handler - handles final cleanup

@@ -51,7 +51,11 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const cursor = searchParams.get('cursor');
-    const limit = parseInt(searchParams.get('limit') || '10', 10);
+    
+    // Validate and clamp limit to prevent abuse
+    const MAX_LIMIT = 100;
+    const rawLimit = parseInt(searchParams.get('limit') || '10', 10);
+    const limit = Math.min(Math.max(1, rawLimit || 10), MAX_LIMIT);
 
     // Build where clause for cursor-based pagination
     const where = cursor
@@ -78,15 +82,21 @@ export async function GET(request: NextRequest) {
       : null;
 
     return NextResponse.json({
-      data: data.map((interview) => ({
-        id: interview.id,
-        createdAt: interview.createdAt,
-        updatedAt: interview.updatedAt,
-        status: interview.status,
-        config: interview.config ? JSON.parse(interview.config) : null,
-        messageCount: JSON.parse(interview.transcript).length,
-        transcript: JSON.parse(interview.transcript),
-      })),
+      data: data.map((interview) => {
+        // Parse JSON fields once to avoid redundant parsing
+        const config = interview.config ? JSON.parse(interview.config) : null;
+        const transcript = JSON.parse(interview.transcript);
+        
+        return {
+          id: interview.id,
+          createdAt: interview.createdAt,
+          updatedAt: interview.updatedAt,
+          status: interview.status,
+          config,
+          messageCount: transcript.length,
+          transcript,
+        };
+      }),
       nextCursor: hasMore ? nextCursor : null,
       hasMore,
     });

@@ -7,7 +7,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getDefaultStorage, getAudioStoragePath } from '@/lib/storage';
+import { getDefaultStorage, getAudioStoragePath, MAX_AUDIO_SIZE_BYTES } from '@/lib/storage';
 import { base64ToBuffer } from '@/lib/audio/wav-encoder';
 
 interface SingleUploadRequest {
@@ -48,6 +48,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Validate file size to prevent memory exhaustion
+    // Base64 encoding increases size by ~33%, so we estimate original size
+    const estimatedSizeBytes = Math.ceil(audioBase64.length * 0.75);
+
+    if (estimatedSizeBytes > MAX_AUDIO_SIZE_BYTES) {
+      return NextResponse.json(
+        { success: false, error: 'Audio file too large (max 10MB)' } as SingleUploadResponse,
+        { status: 413 }
+      );
+    }
+
     const storage = getDefaultStorage();
 
     // Convert base64 to buffer
@@ -59,7 +70,7 @@ export async function POST(request: NextRequest) {
     // Upload to storage
     const url = await storage.upload(storagePath, audioBuffer, 'audio/wav');
 
-    const response: SingleUploadResponse = { 
+    const response: SingleUploadResponse = {
       success: true,
       url,
     };

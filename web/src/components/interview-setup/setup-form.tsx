@@ -28,6 +28,9 @@ import {
     InterviewConfig 
 } from "@/data/interview-options";
 
+// Configurable support email - can be overridden via environment variable
+const SUPPORT_EMAIL = process.env.NEXT_PUBLIC_SUPPORT_EMAIL || 'support@example.com';
+
 export function SetupForm() {
     const router = useRouter();
     const [isPending, startTransition] = useTransition();
@@ -99,11 +102,12 @@ export function SetupForm() {
            
             
         } catch (error) {
+            console.error('Error in handleStart:', error);
+            setIsCreating(false);
             setShowErrorDialog(true);
         }
-        finally {
-            setIsCreating(false);
-        }
+        // Note: No finally block needed - isCreating is reset on error paths,
+        // and on success we're navigating away so it doesn't matter
     };
 
     const handleChange = (field: keyof InterviewConfig, value: any) => {
@@ -347,7 +351,7 @@ export function SetupForm() {
                 open={showErrorDialog}
                 onOpenChange={setShowErrorDialog}
                 title="Failed to Start Interview"
-                description="We couldn't create your interview session. Please try again later or contact support at support@example.com if the problem persists."
+                description={`We couldn't create your interview session. Please try again later or contact support at ${SUPPORT_EMAIL} if the problem persists.`}
             />
         </div>
     );

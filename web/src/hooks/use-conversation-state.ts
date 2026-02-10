@@ -110,6 +110,10 @@ export function useConversationState(options: UseConversationStateOptions): UseC
   
   // Use ref to track message IDs for deduplication
   const messageIdsRef = useRef<Set<string>>(new Set());
+  
+  // Ref to always access current messages (avoids stale closures)
+  const messagesRef = useRef<ConversationMessage[]>([]);
+  messagesRef.current = messages;
 
   const addMessage = useCallback((params: {
     participant: 'user' | 'agent';
@@ -175,14 +179,16 @@ export function useConversationState(options: UseConversationStateOptions): UseC
   }, []);
 
   const getMessagesForUpload = useCallback((): ConversationMessage[] => {
-    return messages.filter(msg => msg.audioBase64 && !msg.audioUrl);
-  }, [messages]);
+    // Use ref to always get current messages, avoiding stale closure issues
+    return messagesRef.current.filter(msg => msg.audioBase64 && !msg.audioUrl);
+  }, []);
 
   const uploadPendingAudio = useCallback(async (): Promise<{ success: boolean; messages: ConversationMessage[] }> => {
     const pendingMessages = getMessagesForUpload();
+    const currentMessages = messagesRef.current;
     
     if (pendingMessages.length === 0) {
-      return { success: true, messages }; // Nothing to upload, return current messages
+      return { success: true, messages: currentMessages }; // Nothing to upload, return current messages
     }
 
     try {
@@ -202,7 +208,7 @@ export function useConversationState(options: UseConversationStateOptions): UseC
 
       if (!response.ok) {
         console.error('Failed to upload audio:', await response.text());
-        return { success: false, messages };
+        return { success: false, messages: messagesRef.current };
       }
 
       const data: BatchUploadResponse = await response.json();
@@ -211,9 +217,9 @@ export function useConversationState(options: UseConversationStateOptions): UseC
       return { success: true, messages: updatedMessages };
     } catch (error) {
       console.error('Error uploading audio:', error);
-      return { success: false, messages };
+      return { success: false, messages: messagesRef.current };
     }
-  }, [interviewId, messages, getMessagesForUpload, updateAudioUrls]);
+  }, [interviewId, getMessagesForUpload, updateAudioUrls]);
 
   const saveToDatabase = useCallback(async (
     status: 'in_progress' | 'completed' | 'paused' = 'completed',

@@ -22,9 +22,31 @@ export async function POST(
     const body: AppendMessageBody = await request.json();
     const { message } = body;
 
-    if (!message || !message.transcript) {
+    // Comprehensive message validation
+    if (!message) {
       return NextResponse.json(
-        { error: 'Message with transcript is required' },
+        { error: 'Message is required' },
+        { status: 400 }
+      );
+    }
+
+    if (!message.transcript || typeof message.transcript !== 'string') {
+      return NextResponse.json(
+        { error: 'Valid transcript string is required' },
+        { status: 400 }
+      );
+    }
+
+    if (!message.transcriptId || typeof message.transcriptId !== 'string') {
+      return NextResponse.json(
+        { error: 'Valid transcriptId is required' },
+        { status: 400 }
+      );
+    }
+
+    if (!message.participant || !['user', 'agent'].includes(message.participant)) {
+      return NextResponse.json(
+        { error: 'Valid participant (user/agent) is required' },
         { status: 400 }
       );
     }
