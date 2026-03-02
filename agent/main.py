@@ -88,6 +88,13 @@ def build_interview_prompt_string(data: Dict[str, Any]) -> str:
         jd = str(data.get("job_description")).replace('"', "'").replace('\n', ' ')[:500]
         p.append(f"Job Description: {jd}")
 
+    # 3. הוספת שאלות הראיון
+    questions = data.get("interview_questions", [])
+    if questions:
+        q_list = "\n".join([f"{i+1}. {q['question']} (Category: {q['category']})" for i, q in enumerate(questions)])
+        p.append(f"\nYour Specific Interview Questions Plan:\n{q_list}\n")
+        p.append("INSTRUCTIONS: Use these questions as a guide. You do not need to ask them exactly in order, but aim to cover them. Adapt to the candidate's responses. Allow for follow-up questions.")
+
     # 3. איחוד לטקסט שטוח (ללא ירידות שורה כפולות שעלולות לשבור את ה-Setup)
     final_str = " ".join([str(x) for x in p if x]).strip()
     
@@ -143,6 +150,13 @@ async def entrypoint(ctx: JobContext):
         logger.warning(f"Failed to parse participant metadata: {e}. Using default config.")
         metadata = {}
     
+    # Extract questions if available
+    questions = metadata.get("questions", [])
+    if questions:
+        logger.info(f"Injecting {len(questions)} questions into interview context")
+        # Add questions to the metadata for prompt building
+        metadata["interview_questions"] = questions
+        
     config = parse_session_config(metadata)
     
     session_manager = SessionManager(config)

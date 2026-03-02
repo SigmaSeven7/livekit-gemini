@@ -16,17 +16,19 @@ import { InterviewStatus } from '@/types/conversation';
 interface CreateInterviewBody {
   config?: Record<string, unknown>;
   status?: InterviewStatus;
+  questions?: unknown[]; // Array of interview questions
 }
 
 export async function POST(request: NextRequest) {
   try {
     const body: CreateInterviewBody = await request.json();
-    
+
     const interview = await prisma.interview.create({
       data: {
         config: body.config ? JSON.stringify(body.config) : null,
         status: body.status || 'in_progress',
         transcript: '[]',
+        questions: body.questions ? JSON.stringify(body.questions) : '[]',
       },
     });
 
@@ -37,6 +39,7 @@ export async function POST(request: NextRequest) {
       status: interview.status,
       config: interview.config ? JSON.parse(interview.config) : null,
       messages: [],
+      questions: interview.questions ? JSON.parse(interview.questions) : [],
     });
   } catch (error) {
     console.error('Create interview error:', error);
@@ -51,7 +54,7 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const cursor = searchParams.get('cursor');
-    
+
     // Validate and clamp limit to prevent abuse
     const MAX_LIMIT = 100;
     const rawLimit = parseInt(searchParams.get('limit') || '10', 10);
@@ -60,10 +63,10 @@ export async function GET(request: NextRequest) {
     // Build where clause for cursor-based pagination
     const where = cursor
       ? {
-          createdAt: {
-            lt: new Date(cursor), // Fetch interviews older than cursor
-          },
-        }
+        createdAt: {
+          lt: new Date(cursor), // Fetch interviews older than cursor
+        },
+      }
       : undefined;
 
     const interviews = await prisma.interview.findMany({
@@ -86,7 +89,7 @@ export async function GET(request: NextRequest) {
         // Parse JSON fields once to avoid redundant parsing
         const config = interview.config ? JSON.parse(interview.config) : null;
         const transcript = JSON.parse(interview.transcript);
-        
+
         return {
           id: interview.id,
           createdAt: interview.createdAt,
@@ -112,12 +115,12 @@ export async function GET(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    
+
     // Require explicit confirmation to prevent accidental deletion
     const confirm = searchParams.get('confirm');
     if (confirm !== 'true') {
       return NextResponse.json(
-        { 
+        {
           error: 'Deletion requires confirmation. Add ?confirm=true to proceed.',
           message: 'This will delete all interviews. Use ?confirm=true&status=<status> to filter by status.'
         },
@@ -148,7 +151,7 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({
       success: true,
       deleted: result.count,
-      message: status 
+      message: status
         ? `Deleted ${result.count} interview(s) with status "${status}"`
         : `Deleted all ${result.count} interview(s)`,
     });

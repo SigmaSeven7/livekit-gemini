@@ -2,14 +2,14 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { 
-    ArrowRight, 
-    Sparkles, 
-    User, 
-    Settings2, 
-    Languages, 
-    ShieldCheck, 
-    Building2, 
+import {
+    ArrowRight,
+    Sparkles,
+    User,
+    Settings2,
+    Languages,
+    ShieldCheck,
+    Building2,
     EyeOff,
     Users,
     Loader2
@@ -17,15 +17,15 @@ import {
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ErrorDialog } from "@/components/ui/error-dialog";
-import { 
-    INTERVIEWER_ROLES, 
-    INTERVIEWER_PERSONALITIES, 
-    INTERVIEW_MODES, 
-    INTERVIEW_LANGUAGES, 
-    GENDER_PROMPTS, 
-    EXPERIENCE_LEVELS, 
+import {
+    INTERVIEWER_ROLES,
+    INTERVIEWER_PERSONALITIES,
+    INTERVIEW_MODES,
+    INTERVIEW_LANGUAGES,
+    GENDER_PROMPTS,
+    EXPERIENCE_LEVELS,
     COMPANY_TYPES,
-    InterviewConfig 
+    InterviewConfig
 } from "@/data/interview-options";
 
 // Configurable support email - can be overridden via environment variable
@@ -60,17 +60,33 @@ export function SetupForm() {
         setIsCreating(true);
 
         try {
-            
-            // Create interview in database first
+            // 1. Generate Questions first
+            const genResponse = await fetch('/api/questions/generate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ config }),
+            });
+
+            if (!genResponse.ok) {
+                console.error('Failed to generate questions');
+                // Optional: We could choose to proceed without questions if generation fails,
+                // but for now let's treat it as an error to ensure quality.
+                throw new Error('Failed to generate interview questions');
+            }
+
+            const genData = await genResponse.json();
+            const questions = genData.questions || [];
+
+            // 2. Create interview in database with the generated questions
             const response = await fetch('/api/interviews', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
+                body: JSON.stringify({
                     config,
-                    status: 'in_progress' 
+                    status: 'in_progress',
+                    questions
                 }),
             });
-
 
             if (!response.ok) {
                 const errorText = await response.text();
@@ -81,7 +97,7 @@ export function SetupForm() {
             }
 
             const interview = await response.json();
-            
+
             const interviewId = interview.id;
             if (!interviewId) {
                 console.error('No interview ID in response');
@@ -92,15 +108,15 @@ export function SetupForm() {
 
             // Store config in sessionStorage for the interview page
             sessionStorage.setItem(`interview-config-${interviewId}`, JSON.stringify(config));
-            
+
             // Navigate to interview page using startTransition for reliable navigation
             const targetUrl = `/interview/${interviewId}`;
-            
+
             startTransition(() => {
                 router.push(targetUrl);
             });
-           
-            
+
+
         } catch (error) {
             console.error('Error in handleStart:', error);
             setIsCreating(false);
@@ -120,7 +136,7 @@ export function SetupForm() {
     return (
         <div className="relative min-h-screen bg-slate-50/50 pb-32 sm:pb-40 md:pb-48">
             <div className="max-w-4xl mx-auto px-4 sm:px-6 py-12 sm:py-16 space-y-16 sm:space-y-20">
-                
+
                 {/* Header */}
                 <header className="text-center space-y-4">
                     <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 text-sm text-indigo-600 font-black uppercase tracking-widest">
@@ -132,12 +148,12 @@ export function SetupForm() {
                 {/* 01. The Interviewer Persona */}
                 <section className="space-y-8">
                     <SectionHeader number="01" title="The Interviewer" icon={<User className="w-4 h-4" />} />
-                    
+
                     <div className="space-y-4">
                         <label className="text-xs font-bold text-slate-400 uppercase tracking-tighter ml-1">Interviewer Role</label>
                         <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mt-4">
                             {["HR", "Tech Lead", "Team Lead", "CEO", "Peer"].map((role) => (
-                                <SelectCard 
+                                <SelectCard
                                     key={role}
                                     label={role}
                                     isSelected={config.interviewer_role === role}
@@ -149,18 +165,17 @@ export function SetupForm() {
 
                     <div className="flex flex-col justify-center items-center bg-white p-6 rounded-3xl border border-slate-100 space-y-4">
                         <label className="text-sm font-semibold text-slate-700 flex items-center gap-2">
-                             Personality & Vibe
+                            Personality & Vibe
                         </label>
                         <div className="flex flex-wrap gap-2">
                             {INTERVIEWER_PERSONALITIES.map(p => (
                                 <button
                                     key={p.id}
                                     onClick={() => handleChange("interviewer_personality", p.id)}
-                                    className={`px-4 py-2 rounded-xl text-xs font-medium transition-all ${
-                                        config.interviewer_personality === p.id 
-                                        ? "bg-indigo-600 text-white shadow-md shadow-indigo-100" 
-                                        : "bg-slate-50 text-slate-600 hover:bg-slate-100"
-                                    }`}
+                                    className={`px-4 py-2 rounded-xl text-xs font-medium transition-all ${config.interviewer_personality === p.id
+                                            ? "bg-indigo-600 text-white shadow-md shadow-indigo-100"
+                                            : "bg-slate-50 text-slate-600 hover:bg-slate-100"
+                                        }`}
                                 >
                                     {p.label}
                                 </button>
@@ -175,9 +190,8 @@ export function SetupForm() {
                                 <button
                                     key={g.id}
                                     onClick={() => handleChange("gender_prompt", g.id)}
-                                    className={`px-4 py-2 rounded-xl text-xs font-medium border transition-all ${
-                                        config.gender_prompt === g.id ? "border-indigo-600 bg-indigo-50 text-indigo-700" : "border-slate-200 text-slate-500"
-                                    }`}
+                                    className={`px-4 py-2 rounded-xl text-xs font-medium border transition-all ${config.gender_prompt === g.id ? "border-indigo-600 bg-indigo-50 text-indigo-700" : "border-slate-200 text-slate-500"
+                                        }`}
                                 >
                                     {g.label}
                                 </button>
@@ -196,8 +210,8 @@ export function SetupForm() {
                                 <label className="text-sm font-semibold text-slate-700">Difficulty</label>
                                 <span className="text-[12px] font-black text-indigo-600 uppercase bg-indigo-50 px-2 py-1 rounded">{config.difficulty_level}</span>
                             </div>
-                            <input 
-                                type="range" min="1" max="5" 
+                            <input
+                                type="range" min="1" max="5"
                                 value={config.difficulty_level}
                                 onChange={(e) => handleChange("difficulty_level", parseInt(e.target.value))}
                                 className="w-full h-1.5 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-indigo-600"
@@ -205,10 +219,10 @@ export function SetupForm() {
                         </div>
                         {/* Interview Mode */}
                         <div className="bg-white p-6 rounded-3xl border border-slate-100 space-y-4">
-                             <label className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                            <label className="text-sm font-semibold text-slate-700 flex items-center gap-2">
                                 <ShieldCheck className="w-4 h-4 text-slate-400" /> Mode
-                             </label>
-                             <select 
+                            </label>
+                            <select
                                 className="w-full bg-slate-50 rounded-xl p-3 text-sm font-medium outline-none"
                                 value={config.interview_mode}
                                 onChange={(e) => handleChange("interview_mode", e.target.value)}
@@ -218,10 +232,10 @@ export function SetupForm() {
                         </div>
                         {/* Language */}
                         <div className="bg-white p-6 rounded-3xl border border-slate-100 space-y-4">
-                             <label className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                            <label className="text-sm font-semibold text-slate-700 flex items-center gap-2">
                                 <Languages className="w-4 h-4 text-slate-400" /> Language
-                             </label>
-                             <select 
+                            </label>
+                            <select
                                 className="w-full bg-slate-50 rounded-xl p-3 text-sm font-medium outline-none"
                                 value={config.interview_language}
                                 onChange={(e) => handleChange("interview_language", e.target.value)}
@@ -231,10 +245,10 @@ export function SetupForm() {
                         </div>
                         {/* Company Type */}
                         <div className="bg-white p-6 rounded-3xl border border-slate-100 space-y-4">
-                             <label className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                            <label className="text-sm font-semibold text-slate-700 flex items-center gap-2">
                                 <Building2 className="w-4 h-4 text-slate-400" /> Company Type
-                             </label>
-                             <select 
+                            </label>
+                            <select
                                 className="w-full bg-slate-50 rounded-xl p-3 text-sm font-medium outline-none"
                                 value={config.company_type}
                                 onChange={(e) => handleChange("company_type", e.target.value)}
@@ -247,11 +261,11 @@ export function SetupForm() {
 
                 {/* 03. Context & Intelligence */}
                 <section className="space-y-8">
-                   
-                    
+
+
                     <div className="space-y-4">
                         <label className="text-xs font-bold text-slate-400 uppercase tracking-tighter ml-1">Job Description</label>
-                        <textarea 
+                        <textarea
                             placeholder="Paste requirements here to sharpen the AI..."
                             className="w-full h-40 bg-white border border-slate-200 rounded-3xl p-6 text-sm focus:ring-4 focus:ring-indigo-500/5 outline-none transition-all"
                             value={config.job_description}
@@ -262,7 +276,7 @@ export function SetupForm() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-2">
                             <label className="text-xs font-bold text-slate-400 uppercase tracking-tighter ml-1">Target Position</label>
-                            <input 
+                            <input
                                 type="text"
                                 className="w-full bg-white border border-slate-200 rounded-2xl p-4 text-sm outline-none focus:border-indigo-500"
                                 value={config.candidate_role}
@@ -271,7 +285,7 @@ export function SetupForm() {
                         </div>
                         <div className="space-y-2">
                             <label className="text-xs font-bold text-slate-400 uppercase tracking-tighter ml-1">Experience (Years)</label>
-                            <select 
+                            <select
                                 className="w-full bg-white border border-slate-200 rounded-2xl p-4 text-sm outline-none"
                                 value={config.experience_level}
                                 onChange={(e) => handleChange("experience_level", parseInt(e.target.value))}
@@ -302,7 +316,7 @@ export function SetupForm() {
                                 </TooltipContent>
                             </Tooltip>
                         </label>
-                        <input 
+                        <input
                             type="text"
                             placeholder="Humility check? Job hopper concerns?"
                             className="w-full bg-white border border-slate-200 rounded-2xl p-4 text-sm italic"
@@ -323,7 +337,7 @@ export function SetupForm() {
                             <SummaryPill label="Exp" value={`${experienceValueMap[config.experience_level || 3]}y`} color="text-amber-400" />
                         </div>
 
-                        <Button 
+                        <Button
                             onClick={handleStart}
                             disabled={isCreating || isPending}
                             className="w-full md:w-auto px-6 sm:px-8 md:px-10 h-12 sm:h-14 rounded-full bg-white hover:bg-slate-100 text-slate-900 font-black text-xs sm:text-sm uppercase tracking-widest gap-2 sm:gap-3 transition-all shrink-0 shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
@@ -373,11 +387,10 @@ function SelectCard({ label, isSelected, onClick }: { label: string; isSelected:
     return (
         <button
             onClick={onClick}
-            className={`py-4 px-2 rounded-2xl border-2 transition-all flex flex-col items-center justify-center ${
-                isSelected 
-                ? "border-indigo-600 bg-white shadow-xl shadow-indigo-100/50 scale-105" 
-                : "border-transparent bg-white text-slate-400 hover:text-slate-600"
-            }`}
+            className={`py-4 px-2 rounded-2xl border-2 transition-all flex flex-col items-center justify-center ${isSelected
+                    ? "border-indigo-600 bg-white shadow-xl shadow-indigo-100/50 scale-105"
+                    : "border-transparent bg-white text-slate-400 hover:text-slate-600"
+                }`}
         >
             <span className={`text-xs font-black uppercase tracking-tight ${isSelected ? "text-indigo-600" : ""}`}>
                 {label}
