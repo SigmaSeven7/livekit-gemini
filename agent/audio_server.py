@@ -1,0 +1,125 @@
+import os
+import boto3
+import sqlite3
+from botocore.config import Config
+from dotenv import load_dotenv
+from flask import Flask, jsonify, request
+from flask_cors import CORS
+from pathlib import Path
+
+load_dotenv(dotenv_path=".env.local")
+
+app = Flask(__name__)
+
+# Enable CORS for localhost:3000
+CORS(app, origins=["http://localhost:3000", "http://127.0.0.1:3000"])
+
+# R2 Configuration
+R2_ACCESS_KEY_ID = os.getenv("R2_ACCESS_KEY_ID")
+R2_SECRET_ACCESS_KEY = os.getenv("R2_SECRET_ACCESS_KEY")
+R2_BUCKET_NAME = os.getenv("R2_BUCKET_NAME")
+R2_ENDPOINT = os.getenv("R2_ENDPOINT")
+
+# Configure boto3 client for R2 (S3-compatible)
+r2_client = boto3.client(
+    "s3",
+    endpoint_url=R2_ENDPOINT,
+    aws_access_key_id=R2_ACCESS_KEY_ID,
+    aws_secret_access_key=R2_SECRET_ACCESS_KEY,
+    config=Config(signature_version="s3v4"),
+)
+
+# Database path
+DB_PATH = Path(__file__).parent / "transcripts.db"
+
+
+def get_transcripts(room_name: str):
+    """Fetch transcripts from SQLite database for a given room."""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """SELECT id, room_name, role, content, audio_start_ms, audio_end_ms, audio_source_url, created_at
+               FROM transcripts WHERE room_name = ? ORDER BY created_at ASC""",
+            (room_name,)
+        )
+
+        rows = cursor.fetchall()
+        conn.close()
+
+        transcripts = []
+        for row in rows:
+            transcripts.append({
+                "transcriptId": str(row["id"]),
+                "interviewId": room_name,
+                "participant": row["role"],
+                "transcript": row["content"],
+                "timestampStart": row["audio_start_ms"],
+                "timestampEnd": row["audio_end_ms"],
+                "audioUrl": None,
+                "audioBase64": None,
+            })
+
+        return transcripts
+
+    except Exception as e:
+        print(f"Error fetching transcripts: {e}")
+        return []
+
+
+@app.route("/getAudioFile", methods=["GET"])
+def get_audio_file():
+    """
+    Endpoint to fetch audio file and transcripts from R2 storage.
+    Query param: id - the interview/room ID (e.g., '51fe7e90-f4f2-452b-9965-7cd69e38accf')
+
+    Returns JSON with:
+    - audioUrl: URL to fetch the full audio file
+    - transcripts: array of transcript segments with timestamps
+    """
+    audio_id = request.args.get("id")
+
+    if not audio_id:
+        return jsonify({"error": "Missing 'id' parameter"}), 400
+
+    try:
+        # Fetch transcripts from database
+        transcripts = get_transcripts(audio_id)
+
+        # Generate a presigned URL for the audio file
+        s3_key = f"interviews/{audio_id}.ogg"
+        presigned_url = r2_client.generate_presigned_url(
+            "get_object",
+            Params={
+                "Bucket": R2_BUCKET_NAME,
+                "Key": s3_key,
+            },
+            ExpiresIn=3600,
+        )
+
+        # Update transcripts with the audio URL
+        for transcript in transcripts:
+            transcript["audioUrl"] = presigned_url
+
+        return jsonify({
+            "audioUrl": presigned_url,
+            "transcripts": transcripts,
+        })
+
+    except r2_client.exceptions.NoSuchKey:
+        return jsonify({"error": f"Audio file not found for id: {audio_id}"}), 404
+    except Exception as e:
+        return jsonify({"error": f"Failed to fetch audio: {str(e)}"}), 500
+
+
+@app.route("/health", methods=["GET"])
+def health_check():
+    """Health check endpoint."""
+    return jsonify({"status": "ok"})
+
+
+if __name__ == "__main__":
+    port = int(os.getenv("PORT", 3001))
+    app.run(host="0.0.0.0", port=port, debug=True)

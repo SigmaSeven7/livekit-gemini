@@ -1,36 +1,55 @@
 "use client";
 
-import { useState } from "react";
-import { Play } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Play, Pause } from "lucide-react";
 import { ConversationMessage } from "@/types/conversation";
-import { playAudioFromUrl, playAudioFromBase64 } from "@/lib/audio/playback-utils";
+import { playAudioFromUrlWithTimestamp, stopAudio, getPlayingMessageId } from "@/lib/audio/playback-utils";
 import { formatTimeOnly } from "@/lib/utils/date";
 
 interface DemiChatProps {
   messages: ConversationMessage[];
+  audioUrl?: string;
 }
 
-export function DemiChat({ messages }: DemiChatProps) {
+export function DemiChat({ messages, audioUrl }: DemiChatProps) {
   const [playingId, setPlayingId] = useState<string | null>(null);
 
+  // Update playing state from the singleton
+  useEffect(() => {
+    const checkPlaying = () => {
+      const currentPlayingId = getPlayingMessageId();
+      setPlayingId(currentPlayingId);
+    };
+
+    const interval = setInterval(checkPlaying, 100);
+    return () => clearInterval(interval);
+  }, []);
+
   const handlePlay = async (message: ConversationMessage) => {
+    // If this message is already playing, stop it
     if (playingId === message.transcriptId) {
-      return; // Already playing
+      stopAudio();
+      setPlayingId(null);
+      return;
+    }
+
+    // If no audio URL provided, warn
+    if (!audioUrl) {
+      console.warn("No audio URL available");
+      return;
     }
 
     setPlayingId(message.transcriptId);
 
     try {
-      // Try audioUrl first, then fallback to audioBase64
-      if (message.audioUrl) {
-        await playAudioFromUrl(message.audioUrl);
-      } else if (message.audioBase64) {
-        await playAudioFromBase64(message.audioBase64);
-      } else {
-        console.warn('No audio available for message:', message.transcriptId);
-      }
+      await playAudioFromUrlWithTimestamp(
+        audioUrl,
+        message.timestampStart,
+        message.timestampEnd,
+        message.transcriptId
+      );
     } catch (error) {
-      console.error('Failed to play audio:', error);
+      console.error("Failed to play audio:", error);
     } finally {
       setPlayingId(null);
     }
@@ -51,8 +70,8 @@ export function DemiChat({ messages }: DemiChatProps) {
       </div>
       <div className="flex-1 overflow-y-auto space-y-4 pr-2">
         {messages.map((message) => {
-          const isAgent = message.participant === 'agent';
-          const hasAudio = !!(message.audioUrl || message.audioBase64);
+          const isAgent = message.participant === "agent" || message.participant === "user";
+          const hasAudio = !!audioUrl;
           const isPlaying = playingId === message.transcriptId;
 
           return (
@@ -74,15 +93,18 @@ export function DemiChat({ messages }: DemiChatProps) {
                   {hasAudio && (
                     <button
                       onClick={() => handlePlay(message)}
-                      disabled={isPlaying}
                       className={`p-1.5 rounded-full transition-all ${
                         isPlaying
                           ? "bg-indigo-600 text-white"
                           : "bg-white/80 hover:bg-indigo-100 text-slate-600 hover:text-indigo-700"
                       } shadow-sm`}
-                      title="Play audio"
+                      title={isPlaying ? "Stop audio" : "Play audio"}
                     >
-                      <Play className={`w-3.5 h-3.5 ${isPlaying ? "fill-current" : ""}`} />
+                      {isPlaying ? (
+                        <Pause className="w-3.5 h-3.5 fill-current" />
+                      ) : (
+                        <Play className="w-3.5 h-3.5 fill-current" />
+                      )}
                     </button>
                   )}
                 </div>
@@ -100,7 +122,6 @@ export function DemiChat({ messages }: DemiChatProps) {
 }
 
 function MessageTimestamp({ timestamp }: { timestamp: number }) {
-  // Derive formatted time during render (no useEffect needed)
   const formattedTime = formatTimeOnly(timestamp);
 
   return (

@@ -1,22 +1,73 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { DemiChat } from "./demi-chat";
 import { InterviewStatus } from "@/types/conversation";
 import { Interview } from "@/types/interview";
+import { ConversationMessage } from "@/types/conversation";
 import { formatDateLong } from "@/lib/utils/date";
 import { STATUS_COLORS, STATUS_LABELS } from "@/lib/constants/interview";
+import { concatenateMessagesWithSameStartTime } from "@/lib/audio/playback-utils";
 
 interface InterviewDetailProps {
   interview: Interview;
 }
 
+interface AudioData {
+  audioUrl: string;
+  transcripts: ConversationMessage[];
+}
+
 export function InterviewDetail({ interview }: InterviewDetailProps) {
   const [showMessages, setShowMessages] = useState(false);
+  const [audioData, setAudioData] = useState<AudioData | null>(null);
+  const [loadingAudio, setLoadingAudio] = useState(false);
+  const [audioError, setAudioError] = useState<string | null>(null);
+
+  // Fetch audio and transcripts when showing messages
+  useEffect(() => {
+    if (!showMessages || audioData) return;
+
+    const fetchAudioData = async () => {
+      setLoadingAudio(true);
+      setAudioError(null);
+
+      try {
+        const response = await fetch(
+          `http://localhost:3001/getAudioFile?id=${interview.id}`
+        );
+
+        if (!response.ok) {
+          throw new Error(`Failed to fetch audio: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        setAudioData(data);
+      } catch (error) {
+        console.error("Error fetching audio:", error);
+        setAudioError(error instanceof Error ? error.message : "Failed to load audio");
+      } finally {
+        setLoadingAudio(false);
+      }
+    };
+
+    fetchAudioData();
+  }, [showMessages, interview.id, audioData]);
 
   // Derive formatted dates during render (no useEffect needed)
   const formattedCreatedAt = formatDateLong(interview.createdAt);
   const formattedUpdatedAt = formatDateLong(interview.updatedAt);
+
+  // Use transcripts from audioData if available, otherwise fall back to interview.transcript
+  const rawMessages = audioData?.transcripts || interview.transcript || [];
+  
+  // Concatenate messages with the same timestampStart
+  const messages = useMemo(() => 
+    concatenateMessagesWithSameStartTime(rawMessages), 
+    [rawMessages]
+  );
+  
+  const audioUrl = audioData?.audioUrl;
 
   return (
     <div className="space-y-6">
@@ -52,7 +103,7 @@ export function InterviewDetail({ interview }: InterviewDetailProps) {
             <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1 block">
               Messages
             </label>
-            <p className="text-sm text-slate-700">{interview.transcript.length} {interview.transcript.length === 1 ? 'message' : 'messages'}</p>
+            <p className="text-sm text-slate-700">{messages.length} {messages.length === 1 ? 'message' : 'messages'}</p>
           </div>
         </div>
       </div>
@@ -100,9 +151,22 @@ export function InterviewDetail({ interview }: InterviewDetailProps) {
 
         {showMessages && (
           <div className="mt-6 pt-6 border-t border-slate-100">
-            <div className="h-[600px]">
-              <DemiChat messages={interview.transcript} />
-            </div>
+            {loadingAudio && (
+              <div className="flex items-center justify-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+                <span className="ml-3 text-slate-500">Loading audio...</span>
+              </div>
+            )}
+            {audioError && (
+              <div className="text-center py-8 text-red-500">
+                <p>Error loading audio: {audioError}</p>
+              </div>
+            )}
+            {!loadingAudio && !audioError && (
+              <div className="h-[600px]">
+                <DemiChat messages={messages} audioUrl={audioUrl} />
+              </div>
+            )}
           </div>
         )}
       </div>

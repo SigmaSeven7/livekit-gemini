@@ -1,11 +1,486 @@
+# from __future__ import annotations
+
+# import asyncio
+# import json
+# import logging
+# import os
+# import sqlite3
+# import time  # <-- Added for exact mp4 syncing
+# from dataclasses import asdict, dataclass
+# from datetime import datetime
+# from pathlib import Path
+# from typing import Any, Dict, List
+
+# from PIL import Image
+# from io import BytesIO
+# from dotenv import load_dotenv
+# from google import genai
+# from google.genai import types
+# from livekit import rtc, api
+
+# from livekit.agents import (
+#     Agent,
+#     AgentSession,
+#     AutoSubscribe,
+#     JobContext,
+#     WorkerOptions,
+#     WorkerType,
+#     cli,
+#     function_tool,
+#     utils,
+#     # Standardized Session Events
+#     AgentStateChangedEvent,
+#     UserStateChangedEvent,
+#     ConversationItemAddedEvent,
+# )
+# from livekit.plugins import google
+# from livekit.plugins import silero
+
+# # Ensure this file exists in your directory
+# from interview_prompts import INTERVIEW_PROMPTS
+
+# load_dotenv(dotenv_path=".env.local")
+
+# logger = logging.getLogger("gemini-playground")
+# logger.setLevel(logging.INFO)
+
+# # Server Constants
+# GEMINI_API_KEY = os.getenv("GOOGLE_API_KEY") or ""
+# MODEL_ID = "gemini-2.5-flash-native-audio-preview-12-2025"
+
+# # R2 Storage configuration
+# R2_ACCESS_KEY_ID = os.getenv("R2_ACCESS_KEY_ID") or ""
+# R2_SECRET_ACCESS_KEY = os.getenv("R2_SECRET_ACCESS_KEY") or ""
+# R2_BUCKET_NAME = os.getenv("R2_BUCKET_NAME") or ""
+# R2_ENDPOINT = os.getenv("R2_ENDPOINT") or ""
+
+# # SQLite database
+# DB_PATH = Path(__file__).parent / "transcripts.db"
+
+# def init_database():
+#     """Initialize the SQLite database and create tables if they don't exist."""
+#     logger.info(f"Initializing database at: {DB_PATH}")
+#     conn = sqlite3.connect(DB_PATH)
+#     cursor = conn.cursor()
+
+#     cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='transcripts'")
+#     result = cursor.fetchone()
+
+#     if not result:
+#         logger.info("Creating transcripts table...")
+#         cursor.execute("""
+#             CREATE TABLE IF NOT EXISTS transcripts (
+#                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+#                 room_name TEXT NOT NULL,
+#                 role TEXT NOT NULL,
+#                 content TEXT NOT NULL,
+#                 audio_start_ms REAL,
+#                 audio_end_ms REAL,
+#                 audio_source_url TEXT,
+#                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+#             )
+#         """)
+#         logger.info("transcripts table created successfully")
+#     else:
+#         logger.info("transcripts table already exists")
+
+#     conn.commit()
+#     conn.close()
+
+# def save_transcript(room_name: str, role: str, content: str, audio_start_ms: float, audio_end_ms: float):
+#     """Save a transcript entry to the database."""
+#     try:
+#         conn = sqlite3.connect(DB_PATH)
+#         cursor = conn.cursor()
+#         cursor.execute(
+#             """INSERT INTO transcripts (room_name, role, content, audio_start_ms, audio_end_ms, audio_source_url)
+#                VALUES (?, ?, ?, ?, ?, ?)""",
+#             (room_name, role, content, audio_start_ms, audio_end_ms, f"interviews/{room_name}.mp4")
+#         )
+#         conn.commit()
+#         conn.close()
+#         logger.info(f"Saved {role} transcript [{audio_start_ms:.0f}ms - {audio_end_ms:.0f}ms]: {content[:50]}...")
+#     except Exception as e:
+#         logger.error(f"Failed to save transcript: {e}")
+
+# @dataclass
+# class SessionConfig:
+#     gemini_api_key: str
+#     instructions: str
+#     model: str
+#     voice: str
+#     temperature: float
+#     max_response_output_tokens: str | int
+#     modalities: list[str]
+#     nano_banana_enabled: bool = False
+
+#     def to_dict(self):
+#         return {k: v for k, v in asdict(self).items() if k != "gemini_api_key"}
+
+#     @staticmethod
+#     def _modalities_from_string(modalities: str) -> list[str]:
+#         modalities_map: Dict[str, List[str]] = {
+#             "text_and_audio": ["TEXT", "AUDIO"],
+#             "text_only": ["TEXT"],
+#             "audio_only": ["AUDIO"],
+#         }
+#         return modalities_map.get(modalities, modalities_map["audio_only"])
+
+#     def __eq__(self, other) -> bool:
+#         return self.to_dict() == other.to_dict()
+
+# def build_interview_prompt_string(data: Dict[str, Any]) -> str:
+#     """Helper to build a clean string for the interview."""
+#     p = []
+#     p.append(INTERVIEW_PROMPTS.get("interviewer_role_prompts", {}).get(data.get("interviewer_role"), ""))
+#     p.append(INTERVIEW_PROMPTS.get("personality_prompts", {}).get(data.get("interviewer_personality"), ""))
+#     p.append(INTERVIEW_PROMPTS.get("mode_prompts", {}).get(data.get("interview_mode"), ""))
+#     p.append(INTERVIEW_PROMPTS.get("language_prompts", {}).get(data.get("interview_language"), ""))
+#     p.append(INTERVIEW_PROMPTS.get("difficulty_prompts", {}).get(str(data.get("difficulty_level", "")), ""))
+#     p.append(INTERVIEW_PROMPTS.get("gender_prompts", {}).get(data.get("gender_prompt"), ""))
+    
+#     role = data.get("candidate_role", "Candidate")
+#     exp = data.get("experience_level", "N/A")
+#     p.append(f"Context: Interviewing a {role} with {exp} years of experience.")
+    
+#     if data.get("job_description"):
+#         jd = str(data.get("job_description")).replace('"', "'").replace('\n', ' ')[:500]
+#         p.append(f"Job Description: {jd}")
+
+#     questions = data.get("interview_questions", [])
+#     if questions:
+#         q_list = "\n".join([f"{i+1}. {q['question']} (Category: {q['category']})" for i, q in enumerate(questions)])
+#         p.append(f"\nYour Specific Interview Questions Plan:\n{q_list}\n")
+#         p.append("INSTRUCTIONS: Use these questions as a guide. You do not need to ask them exactly in order, but aim to cover them. Adapt to the candidate's responses. Allow for follow-up questions.")
+
+#     final_str = " ".join([str(x) for x in p if x]).strip()
+#     return final_str if final_str else "You are a helpful assistant."
+
+# def parse_session_config(data: Dict[str, Any]) -> SessionConfig:
+#     nano_banana_value = data.get("nano_banana_enabled", False)
+#     if isinstance(nano_banana_value, bool):
+#         nano_banana_enabled = nano_banana_value
+#     elif isinstance(nano_banana_value, str):
+#         nano_banana_enabled = nano_banana_value.lower() == "true"
+#     else:
+#         nano_banana_enabled = bool(nano_banana_value)
+    
+#     if "interviewer_role" in data:
+#         instructions = build_interview_prompt_string(data)
+#     else:
+#         instructions = data.get("instructions", "")
+
+#     final_api_key = GEMINI_API_KEY if GEMINI_API_KEY else data.get("gemini_api_key", "")
+
+#     config = SessionConfig(
+#         gemini_api_key=final_api_key,
+#         instructions=instructions,
+#         model=MODEL_ID,
+#         voice="Charon",
+#         temperature=0.8,
+#         max_response_output_tokens=2048,
+#         modalities=SessionConfig._modalities_from_string(
+#             data.get("modalities", "text_and_audio")
+#         ),
+#         nano_banana_enabled=nano_banana_enabled,
+#     )
+#     return config
+
+# async def entrypoint(ctx: JobContext):
+#     logger.info(f"connecting to room {ctx.room.name}")
+#     await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
+
+#     participant = await ctx.wait_for_participant()
+    
+#     try:
+#         metadata = json.loads(participant.metadata) if participant.metadata else {}
+#     except json.JSONDecodeError as e:
+#         logger.warning(f"Failed to parse participant metadata: {e}. Using default config.")
+#         metadata = {}
+    
+#     questions = metadata.get("questions", [])
+#     if questions:
+#         logger.info(f"Injecting {len(questions)} questions into interview context")
+#         metadata["interview_questions"] = questions
+        
+#     config = parse_session_config(metadata)
+    
+#     session_manager = SessionManager(config)
+#     await session_manager.start_session(ctx, participant)
+
+#     logger.info("agent started")
+
+# def create_generate_image_tool(session_manager):
+#     raw_schema = {
+#         "type": "function",
+#         "name": "generate_image",
+#         "description": "Generate an image using Nano Banana and send it to the user",
+#         "parameters": {
+#             "type": "object",
+#             "properties": {
+#                 "prompt": {
+#                     "type": "string",
+#                     "description": "Creative description of the image."
+#                 }
+#             },
+#             "required": ["prompt"],
+#             "additionalProperties": False
+#         }
+#     }
+    
+#     @function_tool(raw_schema=raw_schema)
+#     async def generate_image(raw_arguments: dict) -> str:
+#         prompt = raw_arguments["prompt"]
+#         try:
+#             client = genai.Client(api_key=session_manager.current_config.gemini_api_key)
+#             response = await asyncio.to_thread(
+#                 lambda: client.models.generate_images(
+#                     model='imagen-4.0-fast-generate-001',
+#                     prompt=prompt,
+#                     config=types.GenerateImagesConfig(number_of_images=1, output_mime_type='image/jpeg'),
+#                 )
+#             )
+#             image_bytes = response.generated_images[0].image.image_bytes
+#             img = Image.open(BytesIO(image_bytes))
+#             img.thumbnail((512, 512), Image.Resampling.LANCZOS)
+#             buffer = BytesIO()
+#             img.save(buffer, format='JPEG', quality=90, optimize=True)
+#             image_data = buffer.getvalue()
+            
+#             if session_manager.ctx and session_manager.participant:
+#                 await session_manager.send_image_to_frontend(prompt, image_data)
+            
+#             return "I've generated the image and sent it to your screen!"
+#         except Exception as e:
+#             logger.error(f"Image generation failed: {e}")
+#             return f"Sorry, I couldn't generate that image. Error: {str(e)}"
+#     return generate_image
+
+# class PlaygroundAgent(Agent):
+#     def __init__(self, instructions: str, tools=None, chat_ctx=None):
+#         if chat_ctx:
+#             super().__init__(instructions=instructions, tools=tools or [], chat_ctx=chat_ctx)
+#         else:
+#             super().__init__(instructions=instructions, tools=tools or [])
+
+# class SessionManager:
+#     def __init__(self, config: SessionConfig):
+#         self.current_session: AgentSession | None = None
+#         self.current_config: SessionConfig = config
+#         self.ctx: JobContext | None = None
+#         self.participant: rtc.RemoteParticipant | None = None
+#         self.current_agent: PlaygroundAgent | None = None
+#         self.vad = silero.VAD.load(min_silence_duration=1.0)
+        
+#         # Timing trackers to map exact ms back to the single R2 mp4 file
+#         self.recording_start_time = 0.0
+#         self.agent_start_speaking_time = 0.0
+#         self.user_start_speaking_time = 0.0
+
+#     def create_session(self, config: SessionConfig) -> AgentSession:
+#         session = AgentSession(
+#             llm=google.realtime.RealtimeModel(
+#                 model=config.model,
+#                 voice=config.voice,
+#                 temperature=config.temperature,
+#                 max_output_tokens=int(config.max_response_output_tokens) if config.max_response_output_tokens != "inf" else None,
+#                 api_key=config.gemini_api_key,
+#                 thinking_config=types.ThinkingConfig(include_thoughts=False),
+#             ),
+#             vad=self.vad,
+#             turn_detection="vad",
+#         )
+#         return session
+
+#     async def _start_r2_recording(self, room_name: str):
+#         """Starts recording and importantly, sets the wall-clock zero point."""
+#         if not all([R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME, R2_ENDPOINT]):
+#             logger.warning("R2 credentials not fully configured. Skipping recording.")
+#             return
+
+#         try:
+#             lkapi = api.LiveKitAPI(
+#                 os.getenv("LIVEKIT_URL"),
+#                 os.getenv("LIVEKIT_API_KEY"),
+#                 os.getenv("LIVEKIT_API_SECRET")
+#             )
+
+#             s3_output = api.S3Upload(
+#                 access_key=R2_ACCESS_KEY_ID,
+#                 secret=R2_SECRET_ACCESS_KEY,
+#                 bucket=R2_BUCKET_NAME,
+#                 endpoint=R2_ENDPOINT,
+#                 force_path_style=True
+#             )
+
+#             # Start Egress
+#             egress_info = await lkapi.egress.start_room_composite_egress(
+#                 api.RoomCompositeEgressRequest(
+#                     room_name=room_name,
+#                     file_outputs=[
+#                         api.EncodedFileOutput(
+#                             filepath=f"interviews/{room_name}.mp4",
+#                             s3=s3_output
+#                         )
+#                     ],
+#                     audio_only=True
+#                 )
+#             )
+#             # Crucial: Set zero-point exactly when the command finishes
+#             self.recording_start_time = time.time()
+#             logger.info(f"Recording mapped! Egress ID: {egress_info.egress_id}")
+            
+#         except Exception as e:
+#             logger.exception(f"Failed to start recording: {e}")
+#         finally:
+#             await lkapi.aclose()  # Clears the unclosed asyncio connector errors!
+
+#     async def start_session(self, ctx: JobContext, participant: rtc.RemoteParticipant):
+#         self.ctx = ctx
+#         self.participant = participant
+        
+#         tools = []
+#         if self.current_config.nano_banana_enabled:
+#             logger.info("Nano Banana tool enabled 🍌")
+#             tools.append(create_generate_image_tool(self))
+        
+#         self.current_session = self.create_session(self.current_config)
+
+#         # 1. Trigger R2 recording from inside the session manager
+#         await self._start_r2_recording(ctx.room.name)
+
+#         # 2. Track exactly when speech starts for millisecond accuracy
+#         @self.current_session.on("agent_state_changed")
+#         def on_agent_state(event: AgentStateChangedEvent):
+#             if event.new_state == "speaking":
+#                 self.agent_start_speaking_time = time.time()
+
+#         @self.current_session.on("user_state_changed")
+#         def on_user_state(event: UserStateChangedEvent):
+#             if event.new_state == "speaking":
+#                 self.user_start_speaking_time = time.time()
+
+#         # 3. Save to SQLite the moment the item hits the unified conversation log
+#         @self.current_session.on("conversation_item_added")
+#         def on_item_added(event: ConversationItemAddedEvent):
+#             # Extract text safely depending on how Gemini structured the item
+#             text = ""
+#             if hasattr(event.item, "text_content") and event.item.text_content:
+#                 text = event.item.text_content
+#             elif isinstance(event.item.content, str):
+#                 text = event.item.content
+#             elif isinstance(event.item.content, list):
+#                 text = " ".join([c for c in event.item.content if isinstance(c, str)])
+
+#             if not text.strip():
+#                 return  # Ignore blank events
+
+#             now = time.time()
+#             role = "agent" if event.item.role == "assistant" else "candidate"
+
+#             # Map wall clock back to the MP4 file timeline
+#             if role == "agent" and self.agent_start_speaking_time > 0:
+#                 start_ms = (self.agent_start_speaking_time - self.recording_start_time) * 1000
+#             elif role == "candidate" and self.user_start_speaking_time > 0:
+#                 start_ms = (self.user_start_speaking_time - self.recording_start_time) * 1000
+#             else:
+#                 start_ms = max(0.0, (now - self.recording_start_time - 2.0) * 1000)
+
+#             end_ms = (now - self.recording_start_time) * 1000
+
+#             save_transcript(
+#                 room_name=ctx.room.name,
+#                 role=role,
+#                 content=text,
+#                 audio_start_ms=start_ms,
+#                 audio_end_ms=end_ms
+#             )
+
+#         self.current_agent = PlaygroundAgent(
+#             instructions=self.current_config.instructions,
+#             tools=tools
+#         )
+        
+#         await self.current_session.start(room=ctx.room, agent=self.current_agent)
+        
+#         await asyncio.sleep(1)
+#         for i in range(3):
+#             try:
+#                 await self.current_session.generate_reply(
+#                     instructions="Start the conversation by greeting the user and presenting yourself as the interviewer. Then ask the first question based on both the interviewer role and personality as well as the interviewee's role and personality."
+#                 )
+#                 break
+#             except Exception as e:
+#                 logger.warning(f"failed to generate reply (attempt {i+1}): {e}")
+#                 await asyncio.sleep(1)
+
+#         @ctx.room.local_participant.register_rpc_method("pg.updateConfig")
+#         async def update_config(data: rtc.rpc.RpcInvocationData):
+#             if self.current_session is None or data.caller_identity != participant.identity:
+#                 return json.dumps({"changed": False})
+#             new_config = parse_session_config(json.loads(data.payload))
+#             if self.current_config != new_config:
+#                 old_config = self.current_config
+#                 self.current_config = new_config
+#                 await self.replace_session(ctx, participant, new_config, old_config)
+#                 return json.dumps({"changed": True})
+#             else:
+#                 return json.dumps({"changed": False})
+
+#     async def send_image_to_frontend(self, prompt: str, image_data: bytes):
+#         if not self.ctx or not self.participant: return
+#         try:
+#             writer = await self.ctx.room.local_participant.stream_bytes(
+#                 name="generated_image.jpg", total_size=len(image_data),
+#                 mime_type="image/jpeg", topic="nano_banana_image",
+#                 destination_identities=[self.participant.identity],
+#                 attributes={"prompt": prompt, "type": "nano_banana_image"},
+#             )
+#             await writer.write(image_data)
+#             await writer.aclose()
+#         except Exception as e:
+#             logger.error(f"Failed to send image: {e}")
+
+#     @utils.log_exceptions(logger=logger)
+#     async def replace_session(self, ctx: JobContext, participant: rtc.RemoteParticipant, config: SessionConfig, old_config: SessionConfig):
+#         if self.current_session is None or self.current_agent is None: return
+#         chat_ctx = None
+#         try:
+#             if hasattr(self.current_agent, 'chat_ctx'):
+#                 chat_ctx = self.current_agent.chat_ctx
+#         except: pass
+        
+#         await self.current_session.aclose()
+        
+#         tools = []
+#         if config.nano_banana_enabled:
+#             tools.append(create_generate_image_tool(self))
+        
+#         self.current_session = self.create_session(config)
+#         self.current_agent = PlaygroundAgent(
+#             instructions=config.instructions,
+#             tools=tools,
+#             chat_ctx=chat_ctx
+#         )
+#         await self.current_session.start(room=ctx.room, agent=self.current_agent)
+#         await self.current_session.generate_reply(instructions="Configuration updated.")
+
+# if __name__ == "__main__":
+#     init_database()
+#     cli.run_app(WorkerOptions(agent_name='gemini-playground', entrypoint_fnc=entrypoint, worker_type=WorkerType.ROOM))
+
+
 from __future__ import annotations
 
 import asyncio
 import json
 import logging
 import os
-import re
+import sqlite3
+import time  # <-- Critical for strict wall-clock tracking
 from dataclasses import asdict, dataclass
+from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, List
 
 from PIL import Image
@@ -13,7 +488,8 @@ from io import BytesIO
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
-from livekit import rtc
+from livekit import rtc, api
+
 from livekit.agents import (
     Agent,
     AgentSession,
@@ -24,11 +500,15 @@ from livekit.agents import (
     cli,
     function_tool,
     utils,
+    # Standardized Session Events
+    AgentStateChangedEvent,
+    UserStateChangedEvent,
+    ConversationItemAddedEvent,
 )
 from livekit.plugins import google
 from livekit.plugins import silero
 
-# וודא שהקובץ הזה קיים אצלך
+# Ensure this file exists in your directory
 from interview_prompts import INTERVIEW_PROMPTS
 
 load_dotenv(dotenv_path=".env.local")
@@ -36,9 +516,62 @@ load_dotenv(dotenv_path=".env.local")
 logger = logging.getLogger("gemini-playground")
 logger.setLevel(logging.INFO)
 
-# הגדרות קבועות בשרת
+# Server Constants
 GEMINI_API_KEY = os.getenv("GOOGLE_API_KEY") or ""
 MODEL_ID = "gemini-2.5-flash-native-audio-preview-12-2025"
+
+# R2 Storage configuration
+R2_ACCESS_KEY_ID = os.getenv("R2_ACCESS_KEY_ID") or ""
+R2_SECRET_ACCESS_KEY = os.getenv("R2_SECRET_ACCESS_KEY") or ""
+R2_BUCKET_NAME = os.getenv("R2_BUCKET_NAME") or ""
+R2_ENDPOINT = os.getenv("R2_ENDPOINT") or ""
+
+# SQLite database
+DB_PATH = Path(__file__).parent / "transcripts.db"
+
+def init_database():
+    logger.info(f"Initializing database at: {DB_PATH}")
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='transcripts'")
+    result = cursor.fetchone()
+
+    if not result:
+        logger.info("Creating transcripts table...")
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS transcripts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                room_name TEXT NOT NULL,
+                role TEXT NOT NULL,
+                content TEXT NOT NULL,
+                audio_start_ms REAL,
+                audio_end_ms REAL,
+                audio_source_url TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        logger.info("transcripts table created successfully")
+    else:
+        logger.info("transcripts table already exists")
+
+    conn.commit()
+    conn.close()
+
+def save_transcript(room_name: str, role: str, content: str, audio_start_ms: float, audio_end_ms: float):
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute(
+            """INSERT INTO transcripts (room_name, role, content, audio_start_ms, audio_end_ms, audio_source_url)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (room_name, role, content, audio_start_ms, audio_end_ms, f"interviews/{room_name}.mp4")
+        )
+        conn.commit()
+        conn.close()
+        logger.info(f"Saved {role} transcript [{audio_start_ms:.0f}ms - {audio_end_ms:.0f}ms]: {content[:50]}...")
+    except Exception as e:
+        logger.error(f"Failed to save transcript: {e}")
 
 @dataclass
 class SessionConfig:
@@ -56,7 +589,7 @@ class SessionConfig:
 
     @staticmethod
     def _modalities_from_string(modalities: str) -> list[str]:
-        modalities_map: Dict[str, List[str]] = {
+        modalities_map = {
             "text_and_audio": ["TEXT", "AUDIO"],
             "text_only": ["TEXT"],
             "audio_only": ["AUDIO"],
@@ -67,10 +600,7 @@ class SessionConfig:
         return self.to_dict() == other.to_dict()
 
 def build_interview_prompt_string(data: Dict[str, Any]) -> str:
-    """Helper to build a clean string for the interview."""
     p = []
-    
-    # 1. שליפה בטוחה מהמילון
     p.append(INTERVIEW_PROMPTS.get("interviewer_role_prompts", {}).get(data.get("interviewer_role"), ""))
     p.append(INTERVIEW_PROMPTS.get("personality_prompts", {}).get(data.get("interviewer_personality"), ""))
     p.append(INTERVIEW_PROMPTS.get("mode_prompts", {}).get(data.get("interview_mode"), ""))
@@ -78,34 +608,24 @@ def build_interview_prompt_string(data: Dict[str, Any]) -> str:
     p.append(INTERVIEW_PROMPTS.get("difficulty_prompts", {}).get(str(data.get("difficulty_level", "")), ""))
     p.append(INTERVIEW_PROMPTS.get("gender_prompts", {}).get(data.get("gender_prompt"), ""))
     
-    # 2. הוספת קונטקסט
     role = data.get("candidate_role", "Candidate")
     exp = data.get("experience_level", "N/A")
     p.append(f"Context: Interviewing a {role} with {exp} years of experience.")
     
     if data.get("job_description"):
-        # ניקוי תווים בעייתיים מתיאור המשרה
         jd = str(data.get("job_description")).replace('"', "'").replace('\n', ' ')[:500]
         p.append(f"Job Description: {jd}")
 
-    # 3. הוספת שאלות הראיון
     questions = data.get("interview_questions", [])
     if questions:
         q_list = "\n".join([f"{i+1}. {q['question']} (Category: {q['category']})" for i, q in enumerate(questions)])
         p.append(f"\nYour Specific Interview Questions Plan:\n{q_list}\n")
         p.append("INSTRUCTIONS: Use these questions as a guide. You do not need to ask them exactly in order, but aim to cover them. Adapt to the candidate's responses. Allow for follow-up questions.")
 
-    # 3. איחוד לטקסט שטוח (ללא ירידות שורה כפולות שעלולות לשבור את ה-Setup)
     final_str = " ".join([str(x) for x in p if x]).strip()
-    
-    # הדפסה ללוג כדי שתוכל לוודא
-    print(f"DEBUG PROMPT: {final_str[:100]}...")
-    
     return final_str if final_str else "You are a helpful assistant."
 
-
 def parse_session_config(data: Dict[str, Any]) -> SessionConfig:
-    # Nano Banana Logic (ללא שינוי)
     nano_banana_value = data.get("nano_banana_enabled", False)
     if isinstance(nano_banana_value, bool):
         nano_banana_enabled = nano_banana_value
@@ -114,23 +634,20 @@ def parse_session_config(data: Dict[str, Any]) -> SessionConfig:
     else:
         nano_banana_enabled = bool(nano_banana_value)
     
-    # --- בניית ה-Instructions ---
     if "interviewer_role" in data:
-        logger.info("Building interview instructions...")
         instructions = build_interview_prompt_string(data)
     else:
         instructions = data.get("instructions", "")
 
-    # שימוש ב-API KEY הקבוע, ואם הוא ריק - ניסיון לקחת מה-DATA
     final_api_key = GEMINI_API_KEY if GEMINI_API_KEY else data.get("gemini_api_key", "")
 
     config = SessionConfig(
         gemini_api_key=final_api_key,
         instructions=instructions,
-        model=MODEL_ID,  # שימוש בקבוע
-        voice="Charon",    # שימוש בקול קבוע ותקין
-        temperature=0.8, # שימוש בערך קבוע
-        max_response_output_tokens=2048, # שימוש בערך קבוע
+        model=MODEL_ID,
+        voice="Charon",
+        temperature=0.8,
+        max_response_output_tokens=2048,
         modalities=SessionConfig._modalities_from_string(
             data.get("modalities", "text_and_audio")
         ),
@@ -150,11 +667,8 @@ async def entrypoint(ctx: JobContext):
         logger.warning(f"Failed to parse participant metadata: {e}. Using default config.")
         metadata = {}
     
-    # Extract questions if available
     questions = metadata.get("questions", [])
     if questions:
-        logger.info(f"Injecting {len(questions)} questions into interview context")
-        # Add questions to the metadata for prompt building
         metadata["interview_questions"] = questions
         
     config = parse_session_config(metadata)
@@ -164,8 +678,6 @@ async def entrypoint(ctx: JobContext):
 
     logger.info("agent started")
 
-# --- כל הקוד מכאן ומטה זהה לחלוטין לקוד ה-Playground שעבד לך ---
-
 def create_generate_image_tool(session_manager):
     raw_schema = {
         "type": "function",
@@ -174,10 +686,7 @@ def create_generate_image_tool(session_manager):
         "parameters": {
             "type": "object",
             "properties": {
-                "prompt": {
-                    "type": "string",
-                    "description": "Creative description of the image."
-                }
+                "prompt": {"type": "string", "description": "Creative description of the image."}
             },
             "required": ["prompt"],
             "additionalProperties": False
@@ -208,7 +717,6 @@ def create_generate_image_tool(session_manager):
             
             return "I've generated the image and sent it to your screen!"
         except Exception as e:
-            logger.error(f"Image generation failed: {e}")
             return f"Sorry, I couldn't generate that image. Error: {str(e)}"
     return generate_image
 
@@ -218,7 +726,40 @@ class PlaygroundAgent(Agent):
             super().__init__(instructions=instructions, tools=tools or [], chat_ctx=chat_ctx)
         else:
             super().__init__(instructions=instructions, tools=tools or [])
-        self.session_manager = None
+
+
+# --- THE STRICT TIME QUEUE ---
+class IntervalTracker:
+    """Guarantees zero overlap by strictly queueing and slicing VAD intervals."""
+    def __init__(self):
+        self.intervals = []
+        self.current_start = None
+
+    def start_speaking(self, now: float):
+        if self.current_start is None:
+            self.current_start = now
+
+    def stop_speaking(self, now: float):
+        if self.current_start is not None:
+            self.intervals.append((self.current_start, now))
+            self.current_start = None
+
+    def pop_bounds(self, now: float) -> tuple[float, float]:
+        # If still speaking while the transcript arrives, slice it exactly here!
+        if self.current_start is not None:
+            self.intervals.append((self.current_start, now))
+            self.current_start = now  # The next check MUST start from 'now'
+
+        if not self.intervals:
+            # Absolute fallback: if no VAD was detected, assume the last 500ms
+            return now - 0.5, now
+
+        # Get the earliest start and latest end from the queue
+        start_t = self.intervals[0][0]
+        end_t = self.intervals[-1][1]
+        self.intervals.clear() # Flush the queue so next message is clean
+        return start_t, end_t
+
 
 class SessionManager:
     def __init__(self, config: SessionConfig):
@@ -228,30 +769,69 @@ class SessionManager:
         self.participant: rtc.RemoteParticipant | None = None
         self.current_agent: PlaygroundAgent | None = None
         self.vad = silero.VAD.load(min_silence_duration=1.0)
+        
+        # Exact R2 sync zero-point
+        self.recording_start_time = 0.0
+        
+        # Dedicated strict trackers for each participant
+        self.agent_tracker = IntervalTracker()
+        self.user_tracker = IntervalTracker()
 
     def create_session(self, config: SessionConfig) -> AgentSession:
-
-      
-        print(types.Modality.TEXT)
-        print(types.Modality.AUDIO)
-        print([types.Modality.TEXT, types.Modality.AUDIO])
-
         session = AgentSession(
             llm=google.realtime.RealtimeModel(
                 model=config.model,
                 voice=config.voice,
                 temperature=config.temperature,
                 max_output_tokens=int(config.max_response_output_tokens) if config.max_response_output_tokens != "inf" else None,
-                #modalities=['TEXT', 'AUDIO'],
                 api_key=config.gemini_api_key,
-                thinking_config=types.ThinkingConfig(
-                    include_thoughts=False  # This captures reasoning in a separate field
-                ),
+                thinking_config=types.ThinkingConfig(include_thoughts=False),
             ),
             vad=self.vad,
             turn_detection="vad",
         )
         return session
+
+    async def _start_r2_recording(self, room_name: str):
+        if not all([R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME, R2_ENDPOINT]):
+            logger.warning("R2 credentials not fully configured. Skipping recording.")
+            return
+
+        try:
+            lkapi = api.LiveKitAPI(
+                os.getenv("LIVEKIT_URL"),
+                os.getenv("LIVEKIT_API_KEY"),
+                os.getenv("LIVEKIT_API_SECRET")
+            )
+
+            s3_output = api.S3Upload(
+                access_key=R2_ACCESS_KEY_ID,
+                secret=R2_SECRET_ACCESS_KEY,
+                bucket=R2_BUCKET_NAME,
+                endpoint=R2_ENDPOINT,
+                force_path_style=True
+            )
+
+            egress_info = await lkapi.egress.start_room_composite_egress(
+                api.RoomCompositeEgressRequest(
+                    room_name=room_name,
+                    file_outputs=[
+                        api.EncodedFileOutput(
+                            filepath=f"interviews/{room_name}.mp4",
+                            s3=s3_output
+                        )
+                    ],
+                    audio_only=True
+                )
+            )
+            # ZERO POINT: The exact moment the SDK confirms recording has started
+            self.recording_start_time = time.time()
+            logger.info(f"Recording mapped! Zero-Point established.")
+            
+        except Exception as e:
+            logger.exception(f"Failed to start recording: {e}")
+        finally:
+            await lkapi.aclose()
 
     async def start_session(self, ctx: JobContext, participant: rtc.RemoteParticipant):
         self.ctx = ctx
@@ -259,34 +839,93 @@ class SessionManager:
         
         tools = []
         if self.current_config.nano_banana_enabled:
-            logger.info("Nano Banana tool enabled 🍌")
             tools.append(create_generate_image_tool(self))
         
         self.current_session = self.create_session(self.current_config)
-        
-        # Here we inject the instructions into the Agent
+
+        # 1. Establish the Zero Point
+        await self._start_r2_recording(ctx.room.name)
+
+        # 2. Track VAD directly into the Queues
+        @self.current_session.on("agent_state_changed")
+        def on_agent_state(event: AgentStateChangedEvent):
+            if event.new_state == "speaking":
+                self.agent_tracker.start_speaking(time.time())
+            else:
+                self.agent_tracker.stop_speaking(time.time())
+
+        @self.current_session.on("user_state_changed")
+        def on_user_state(event: UserStateChangedEvent):
+            if event.new_state == "speaking":
+                self.user_tracker.start_speaking(time.time())
+            else:
+                self.user_tracker.stop_speaking(time.time())
+
+        # 3. Process Transcripts and apply Queue bounds
+        @self.current_session.on("conversation_item_added")
+        def on_item_added(event: ConversationItemAddedEvent):
+            text = ""
+            if hasattr(event.item, "text_content") and event.item.text_content:
+                text = event.item.text_content
+            elif isinstance(event.item.content, str):
+                text = event.item.content
+            elif isinstance(event.item.content, list):
+                text = " ".join([c for c in event.item.content if isinstance(c, str)])
+
+            now = time.time()
+            role = "agent" if event.item.role == "assistant" else "candidate"
+
+            # Pop the strict boundaries from our VAD queues
+            if role == "agent":
+                start_wall, end_wall = self.agent_tracker.pop_bounds(now)
+            else:
+                start_wall, end_wall = self.user_tracker.pop_bounds(now)
+
+            if not text.strip():
+                return  # If empty, we still popped the bounds so they don't bleed!
+
+            # Convert to ms relative to our Zero Point
+            raw_start_ms = (start_wall - self.recording_start_time) * 1000
+            raw_end_ms = (end_wall - self.recording_start_time) * 1000
+
+            # --- THE FIX: AUDIO FRAMING PADDING ---
+            # VAD takes a moment to trigger, and browsers have stream latency.
+            # We subtract 1200ms to catch the breath/first syllable safely.
+            # We add 600ms to the end so words don't cut off abruptly.
+            PRE_SPEECH_PADDING_MS = 1200.0
+            POST_SPEECH_PADDING_MS = 600.0
+
+            start_ms = max(0.0, raw_start_ms - PRE_SPEECH_PADDING_MS)
+            end_ms = max(0.0, raw_end_ms + POST_SPEECH_PADDING_MS)
+
+            # Mathematical safety net: End must always be strictly greater than start
+            if end_ms <= start_ms:
+                end_ms = start_ms + 1000.0 
+
+            save_transcript(
+                room_name=ctx.room.name,
+                role=role,
+                content=text,
+                audio_start_ms=start_ms,
+                audio_end_ms=end_ms
+            )
+
         self.current_agent = PlaygroundAgent(
             instructions=self.current_config.instructions,
             tools=tools
         )
         
-        await self.current_session.start(
-            room=ctx.room,
-            agent=self.current_agent,
-        )
+        await self.current_session.start(room=ctx.room, agent=self.current_agent)
         
-        # Greet the user
         await asyncio.sleep(1)
         for i in range(3):
             try:
                 await self.current_session.generate_reply(
-                    instructions=(
-                        "Start the conversation by greeting the user and presenting yourself as the interviewer. Then ask the first question based on both the interviewer role and personality as well as the interviewee's role and personality."
-                    )
+                    instructions="Start the conversation by greeting the user and presenting yourself as the interviewer. Then ask the first question based on both the interviewer role and personality as well as the interviewee's role and personality."
                 )
                 break
             except Exception as e:
-                logger.warning(f"failed to generate reply (attempt {i+1}): {e}")
+                logger.warning(f"failed to generate reply: {e}")
                 await asyncio.sleep(1)
 
         @ctx.room.local_participant.register_rpc_method("pg.updateConfig")
@@ -299,8 +938,7 @@ class SessionManager:
                 self.current_config = new_config
                 await self.replace_session(ctx, participant, new_config, old_config)
                 return json.dumps({"changed": True})
-            else:
-                return json.dumps({"changed": False})
+            return json.dumps({"changed": False})
 
     async def send_image_to_frontend(self, prompt: str, image_data: bytes):
         if not self.ctx or not self.participant: return
@@ -309,7 +947,6 @@ class SessionManager:
                 name="generated_image.jpg", total_size=len(image_data),
                 mime_type="image/jpeg", topic="nano_banana_image",
                 destination_identities=[self.participant.identity],
-                attributes={"prompt": prompt, "type": "nano_banana_image"},
             )
             await writer.write(image_data)
             await writer.aclose()
@@ -326,19 +963,13 @@ class SessionManager:
         except: pass
         
         await self.current_session.aclose()
-        
-        tools = []
-        if config.nano_banana_enabled:
-            tools.append(create_generate_image_tool(self))
+        tools = [create_generate_image_tool(self)] if config.nano_banana_enabled else []
         
         self.current_session = self.create_session(config)
-        self.current_agent = PlaygroundAgent(
-            instructions=config.instructions,
-            tools=tools,
-            chat_ctx=chat_ctx
-        )
+        self.current_agent = PlaygroundAgent(instructions=config.instructions, tools=tools, chat_ctx=chat_ctx)
         await self.current_session.start(room=ctx.room, agent=self.current_agent)
         await self.current_session.generate_reply(instructions="Configuration updated.")
 
 if __name__ == "__main__":
+    init_database()
     cli.run_app(WorkerOptions(agent_name='gemini-playground', entrypoint_fnc=entrypoint, worker_type=WorkerType.ROOM))
