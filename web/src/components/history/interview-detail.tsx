@@ -137,6 +137,45 @@ export function InterviewDetail({ interview }: InterviewDetailProps) {
         </div>
       )}
 
+      {/* Questions Section */}
+      {interview.questions && interview.questions.length > 0 && (
+        <div className="bg-white border border-slate-100 rounded-2xl p-6">
+          <h2 className="text-lg font-semibold text-slate-900 mb-4">
+            Interview Questions
+            <span className="ml-2 text-sm font-normal text-slate-400">({interview.questions.length})</span>
+          </h2>
+          <div className="space-y-4">
+            {interview.questions.map((q, idx) => (
+              <div key={idx} className="border border-slate-100 rounded-xl p-4">
+                <div className="flex items-start gap-3 mb-3">
+                  <span className="flex-shrink-0 w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 text-xs font-bold flex items-center justify-center mt-0.5">
+                    {idx + 1}
+                  </span>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-medium">
+                        {q.category}
+                      </span>
+                    </div>
+                    <p className="text-sm text-slate-800 leading-relaxed">{q.question}</p>
+                  </div>
+                </div>
+                {q.hints && q.hints.length > 0 && (
+                  <div className="ml-9 space-y-1">
+                    {q.hints.map((hint, hIdx) => (
+                      <p key={hIdx} className="text-xs text-slate-500 flex items-start gap-1.5">
+                        <span className="text-indigo-300 mt-0.5">›</span>
+                        {hint}
+                      </p>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Messages Section */}
       <div className="bg-white border border-slate-100 rounded-2xl p-6">
         <div className="flex items-center justify-between mb-4">

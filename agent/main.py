@@ -618,9 +618,18 @@ def build_interview_prompt_string(data: Dict[str, Any]) -> str:
 
     questions = data.get("interview_questions", [])
     if questions:
-        q_list = "\n".join([f"{i+1}. {q['question']} (Category: {q['category']})" for i, q in enumerate(questions)])
-        p.append(f"\nYour Specific Interview Questions Plan:\n{q_list}\n")
-        p.append("INSTRUCTIONS: Use these questions as a guide. You do not need to ask them exactly in order, but aim to cover them. Adapt to the candidate's responses. Allow for follow-up questions.")
+        q_list = "\n".join([f"- [{q['category']}] {q['question']}" for q in questions])
+        p.append(f"\nPreparation Topics (do NOT read these aloud or follow them as a script):\n{q_list}\n")
+        p.append(
+            "INTERVIEWING STYLE: Conduct a natural, flowing human conversation — not a scripted Q&A. "
+            "These topics are your internal preparation notes, not a list to recite. "
+            "Introduce topics organically through conversation, never by reading them verbatim. "
+            "After the candidate responds, dig deeper with follow-up questions before moving on — "
+            "phrases like 'Can you elaborate on that?', 'What was the outcome?', 'What would you do differently?' "
+            "should arise naturally. Only move to a new topic when the current thread is fully explored. "
+            "It is far better to deeply explore 3–4 topics than to superficially touch all of them. "
+            "NEVER say 'My next question is...' or read a question word-for-word from your preparation notes."
+        )
 
     final_str = " ".join([str(x) for x in p if x]).strip()
     return final_str if final_str else "You are a helpful assistant."
@@ -786,9 +795,14 @@ class SessionManager:
                 max_output_tokens=int(config.max_response_output_tokens) if config.max_response_output_tokens != "inf" else None,
                 api_key=config.gemini_api_key,
                 thinking_config=types.ThinkingConfig(include_thoughts=False),
+                realtime_input_config=types.RealtimeInputConfig(
+                    automatic_activity_detection=types.AutomaticActivityDetection(
+                        silence_duration_ms=1500,   # <-- controls the cutoff (ms)
+                        start_of_speech_sensitivity="START_SENSITIVITY_LOW",
+                        end_of_speech_sensitivity="END_SENSITIVITY_LOW",  # less aggressive cutoff
+                    )
             ),
-            vad=self.vad,
-            turn_detection="vad",
+            ),
         )
         return session
 
@@ -917,11 +931,13 @@ class SessionManager:
         
         await self.current_session.start(room=ctx.room, agent=self.current_agent)
         
-        await asyncio.sleep(1)
+        await asyncio.sleep(3)
         for i in range(3):
             try:
+                # Use a neutral nudge so the Realtime API gets a non-empty payload,
+                # while the full interview prompt (with questions) stays in the base instructions.
                 await self.current_session.generate_reply(
-                    instructions="Start the conversation by greeting the user and presenting yourself as the interviewer. Then ask the first question based on both the interviewer role and personality as well as the interviewee's role and personality."
+                    instructions="Begin the interview following your instructions."
                 )
                 break
             except Exception as e:
@@ -968,7 +984,13 @@ class SessionManager:
         self.current_session = self.create_session(config)
         self.current_agent = PlaygroundAgent(instructions=config.instructions, tools=tools, chat_ctx=chat_ctx)
         await self.current_session.start(room=ctx.room, agent=self.current_agent)
-        await self.current_session.generate_reply(instructions="Configuration updated.")
+        # Append temporarily so we preserve base instructions (passing to generate_reply would replace them)
+        original = self.current_agent.instructions
+        await self.current_agent.update_instructions(
+            f"{original}\n\n[For this turn only: Briefly acknowledge that the configuration has been updated, then continue the interview.]"
+        )
+        await self.current_session.generate_reply()
+        await self.current_agent.update_instructions(original)  # Revert
 
 if __name__ == "__main__":
     init_database()

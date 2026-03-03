@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useRef, useCallback } from "react";
-import { LiveKitRoom, RoomAudioRenderer, StartAudio, BarVisualizer, useTracks } from "@livekit/components-react";
+import { LiveKitRoom, RoomAudioRenderer, StartAudio, BarVisualizer, useTracks, useRoomContext } from "@livekit/components-react";
 import { Track } from "livekit-client";
 import { InterviewConfig } from "@/data/interview-options";
 import { InterviewAgentProvider, useInterviewAgent } from "./interview-agent-provider";
@@ -74,6 +74,7 @@ type EndingState = 'idle' | 'saving' | 'success' | 'error';
 
 function Controls({ onDisconnect }: { onDisconnect: () => void }) {
     const { localParticipant } = useLocalParticipant();
+    const room = useRoomContext();
     const { endInterview } = useInterviewAgent();
     const [isMuted, setIsMuted] = useState(false);
     const [endingState, setEndingState] = useState<EndingState>('idle');
@@ -98,8 +99,10 @@ function Controls({ onDisconnect }: { onDisconnect: () => void }) {
                 setSavedInterviewId(result.interviewId);
                 setEndingState('success');
                 
-                // Wait a moment to show success state, then disconnect
-                setTimeout(() => {
+                // Disconnect from the LiveKit room — this triggers the agent's
+                // close_on_disconnect shutdown so it stops speaking immediately.
+                setTimeout(async () => {
+                    await room.disconnect();
                     onDisconnect();
                 }, 1500);
             } else {
@@ -239,33 +242,71 @@ export function InterviewPage({ roomId }: { roomId: string }) {
     const router = useRouter();
     const [token, setToken] = useState("");
     const [wsUrl, setWsUrl] = useState("");
-    const [config, setConfig] = useState<InterviewConfig | null>(null);
+    const [setupError, setSetupError] = useState<string | null>(null);
 
     useEffect(() => {
-        const storedConfig = sessionStorage.getItem(`interview-config-${roomId}`);
-        if (storedConfig) {
-            setConfig(JSON.parse(storedConfig));
-        }
-    }, [roomId]);
+        let cancelled = false;
 
-    useEffect(() => {
-        if (!config) return;
-        const fetchToken = async () => {
+        const init = async () => {
             try {
-                const response = await fetch("/api/interview-token", {
+                // Fetch config and questions from DB — no sessionStorage dependency
+                const interviewRes = await fetch(`/api/history?id=${roomId}`);
+                if (!interviewRes.ok) {
+                    throw new Error(`Failed to load interview: ${interviewRes.status}`);
+                }
+                const interview = await interviewRes.json();
+                if (!interview?.config) {
+                    throw new Error("Interview configuration not found.");
+                }
+
+                if (cancelled) return;
+
+                // Merge questions into config so the agent receives them in metadata
+                const configWithQuestions = {
+                    ...interview.config,
+                    questions: interview.questions ?? [],
+                };
+
+                const tokenRes = await fetch("/api/interview-token", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ roomName: roomId, config }),
+                    body: JSON.stringify({ roomName: roomId, config: configWithQuestions }),
                 });
-                const data = await response.json();
-                setToken(data.accessToken);
-                setWsUrl(data.url);
+                if (!tokenRes.ok) {
+                    throw new Error(`Token request failed: ${tokenRes.status}`);
+                }
+                const tokenData = await tokenRes.json();
+                if (!tokenData.accessToken || !tokenData.url) {
+                    throw new Error("Invalid token response from server.");
+                }
+
+                if (cancelled) return;
+                setToken(tokenData.accessToken);
+                setWsUrl(tokenData.url);
             } catch (e) {
-                console.error("Failed to get token", e);
+                if (cancelled) return;
+                console.error("Interview setup failed:", e);
+                setSetupError(e instanceof Error ? e.message : "Failed to start interview. Please try again.");
             }
         };
-        fetchToken();
-    }, [config, roomId]);
+
+        init();
+        return () => { cancelled = true; };
+    }, [roomId]);
+
+    if (setupError) {
+        return (
+            <div className="flex flex-col items-center justify-center h-screen bg-background gap-4">
+                <p className="text-sm font-medium text-destructive">{setupError}</p>
+                <button
+                    onClick={() => router.push("/")}
+                    className="px-6 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity"
+                >
+                    Go Back
+                </button>
+            </div>
+        );
+    }
 
     if (!token || !wsUrl) {
         return (

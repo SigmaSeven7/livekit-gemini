@@ -22,4 +22,10 @@ export interface Interview {
   transcript: ConversationMessage[];
   /** Number of messages in the conversation (from Prisma or audio server) */
   messageCount?: number;
+  /** Generated interview questions */
+  questions?: Array<{
+    question: string;
+    category: string;
+    hints: string[];
+  }>;
 }

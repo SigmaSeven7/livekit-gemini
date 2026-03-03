@@ -20,7 +20,7 @@ if (!GROQ_API_KEY) {
  */
 function getRoleDescription(roleId: string): string {
     switch (roleId) {
-        case "HR": return "Focus on behavioral questions, culture fit, soft skills, and the STAR method.";
+        case "HR": return "Focus exclusively on behavioral questions, culture fit, soft skills, motivation, values, and the STAR method. Do NOT generate any technical questions about code, systems, algorithms, or engineering tools.";
         case "Tech Lead": return "Focus on technical depth, system architecture, trade-offs, and engineering best practices.";
         case "Team Lead": return "Focus on team dynamics, conflict resolution, mentorship, and technical leadership.";
         case "CEO": return "Focus on company vision, ownership, business impact, and long-term potential.";
@@ -86,7 +86,7 @@ Generate a question bank of 10 interview questions.
 **Output Requirements:**
 1. **Language:** Generate ALL content (questions, hints) in **${config.interview_language}**.
 2. **Complexity:** Difficulty level ${config.difficulty_level}/5.
-3. **Diversity:** Cover different categories suitable for the role (Technical, Behavioral, etc.).
+3. **Diversity:** Cover different categories suitable for the role (Technical, Behavioral, etc.). IMPORTANT: If the interviewer role is "HR", use ONLY non-technical categories such as Behavioral, Teamwork, Culture Fit, Leadership, Communication, Adaptability, and Motivation — never Technical.
 4. **Hints:** Provide 3 progressive hints for each question (1=Subtle, 2=Moderate, 3=Direct).
 
 **JSON Schema:**
@@ -107,48 +107,58 @@ Generate a question bank of 10 interview questions.
 Return ONLY the JSON object.
 `;
 
-    try {
-        const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "Authorization": `Bearer ${GROQ_API_KEY}`,
-            },
-            body: JSON.stringify({
-                model: GROQ_MODEL,
-                messages: [
-                    { role: "system", content: systemPrompt },
-                    { role: "user", content: userPrompt }
-                ],
-                response_format: { type: "json_object" },
-                temperature: 0.7,
-            }),
-        });
+    const MAX_ATTEMPTS = 3;
+    let lastError: Error = new Error("Unknown error");
 
-        if (!response.ok) {
-            const errorText = await response.text();
-            console.error("Groq API error:", errorText);
-            throw new Error(`Groq API failed: ${response.status} ${response.statusText}`);
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+        try {
+            const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${GROQ_API_KEY}`,
+                },
+                body: JSON.stringify({
+                    model: GROQ_MODEL,
+                    messages: [
+                        { role: "system", content: systemPrompt },
+                        { role: "user", content: userPrompt }
+                    ],
+                    response_format: { type: "json_object" },
+                    temperature: 0.7,
+                }),
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error(`Groq API error (attempt ${attempt}/${MAX_ATTEMPTS}):`, errorText);
+                lastError = new Error(`Groq API failed: ${response.status} ${response.statusText}`);
+                continue;
+            }
+
+            const data = await response.json();
+            const content = data.choices[0]?.message?.content;
+
+            if (!content) {
+                lastError = new Error("No content received from Groq API");
+                continue;
+            }
+
+            const parsed = JSON.parse(content);
+
+            if (!parsed.questions || !Array.isArray(parsed.questions)) {
+                lastError = new Error("Invalid JSON format: missing 'questions' array");
+                continue;
+            }
+
+            return parsed as QuestionBankResponse;
+
+        } catch (error) {
+            lastError = error instanceof Error ? error : new Error(String(error));
+            console.error(`Question generation attempt ${attempt}/${MAX_ATTEMPTS} failed:`, lastError.message);
         }
-
-        const data = await response.json();
-        const content = data.choices[0]?.message?.content;
-
-        if (!content) {
-            throw new Error("No content received from Groq API");
-        }
-
-        const parsed = JSON.parse(content);
-
-        // Basic validation
-        if (!parsed.questions || !Array.isArray(parsed.questions)) {
-            throw new Error("Invalid JSON format: missing 'questions' array");
-        }
-
-        return parsed as QuestionBankResponse;
-
-    } catch (error) {
-        console.error("Question generation failed:", error);
-        throw error;
     }
+
+    console.error("Question generation failed after all attempts:", lastError);
+    throw lastError;
 }
