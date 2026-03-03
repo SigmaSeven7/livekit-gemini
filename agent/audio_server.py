@@ -33,6 +33,20 @@ r2_client = boto3.client(
 DB_PATH = Path(__file__).parent / "transcripts.db"
 
 
+def get_transcript_count(room_name: str) -> int:
+    """Return the number of transcript segments for a room."""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM transcripts WHERE room_name = ?", (room_name,))
+        count = cursor.fetchone()[0]
+        conn.close()
+        return count
+    except Exception as e:
+        print(f"Error fetching transcript count: {e}")
+        return 0
+
+
 def get_transcripts(room_name: str):
     """Fetch transcripts from SQLite database for a given room."""
     try:
@@ -67,6 +81,34 @@ def get_transcripts(room_name: str):
     except Exception as e:
         print(f"Error fetching transcripts: {e}")
         return []
+
+
+@app.route("/getTranscripts", methods=["GET"])
+def get_transcripts_route():
+    """
+    Lightweight endpoint to get transcripts only (no audio/R2).
+    Query param: id - the interview/room ID.
+    Returns JSON: { transcripts: [...] }
+    """
+    audio_id = request.args.get("id")
+    if not audio_id:
+        return jsonify({"error": "Missing 'id' parameter"}), 400
+    transcripts = get_transcripts(audio_id)
+    return jsonify({"transcripts": transcripts})
+
+
+@app.route("/getTranscriptCount", methods=["GET"])
+def get_transcript_count_route():
+    """
+    Lightweight endpoint to get transcript count for an interview.
+    Query param: id - the interview/room ID.
+    Returns JSON: { count: number }
+    """
+    audio_id = request.args.get("id")
+    if not audio_id:
+        return jsonify({"error": "Missing 'id' parameter"}), 400
+    count = get_transcript_count(audio_id)
+    return jsonify({"count": count})
 
 
 @app.route("/getAudioFile", methods=["GET"])

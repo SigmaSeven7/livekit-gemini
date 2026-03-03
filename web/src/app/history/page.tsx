@@ -148,7 +148,7 @@ export default function HistoryPage() {
                     id={interview.id}
                     status={interview.status}
                     createdAt={interview.createdAt}
-                    messageCount={interview.transcript.length}
+                    messageCount={interview.messageCount ?? interview.transcript.length}
                     config={interview.config}
                     onDelete={(id) => setInterviewToDelete(id)}
                     isDeleting={deleteInterviewMutation.isPending && deleteInterviewMutation.variables === interview.id}
@@ -174,7 +174,7 @@ export default function HistoryPage() {
       {/* Delete All Confirmation Dialog */}
       <AlertDialog open={showDeleteAllDialog} onOpenChange={setShowDeleteAllDialog}>
         <AlertDialogContent 
-          className="bg-white border border-slate-100 rounded-2xl shadow-xl"
+          className="flex flex-col items-center justify-center bg-white border border-slate-100 rounded-2xl shadow-xl"
           overlayClassName="bg-black/20 backdrop-blur-sm"
         >
           <AlertDialogHeader>
@@ -184,7 +184,7 @@ export default function HistoryPage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className="rounded-xl border-slate-200 text-slate-700 hover:bg-slate-50">
+            <AlertDialogCancel className="rounded-xl border-slate-200 text-slate-100 hover:bg-slate-50">
               Cancel
             </AlertDialogCancel>
             <AlertDialogAction

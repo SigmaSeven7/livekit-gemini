@@ -7,12 +7,12 @@ import { InterviewConfig } from "@/data/interview-options";
 import { InterviewAgentProvider, useInterviewAgent } from "./interview-agent-provider";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { PhoneOff, Mic, MicOff, Play, Loader2, CheckCircle2, XCircle } from "lucide-react";
+import { PhoneOff, Mic, MicOff, Loader2, CheckCircle2, XCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useLocalParticipant } from "@livekit/components-react";
 
 function Transcript() {
-    const { displayTranscriptions, interruptedSegmentIds, playTranscript } = useInterviewAgent();
+    const { displayTranscriptions, interruptedSegmentIds } = useInterviewAgent();
     const scrollRef = useRef<HTMLDivElement>(null);
 
     // Precise scroll to bottom logic
@@ -50,15 +50,6 @@ function Transcript() {
                                     )}>
                                         {isAgent ? "Gemini Agent" : "You"}
                                     </span>
-                                    <button
-                                        onClick={() => playTranscript(segment.id)}
-                                        className={cn(
-                                            "p-1.5 rounded-full transition-all opacity-0 group-hover:opacity-100",
-                                            isAgent ? "hover:bg-foreground/10" : "hover:bg-white/20"
-                                        )}
-                                    >
-                                        <Play className="w-3.5 h-3.5 fill-current" />
-                                    </button>
                                 </div>
                                 
                                 <p className="whitespace-pre-wrap break-words">
@@ -83,7 +74,7 @@ type EndingState = 'idle' | 'saving' | 'success' | 'error';
 
 function Controls({ onDisconnect }: { onDisconnect: () => void }) {
     const { localParticipant } = useLocalParticipant();
-    const { endInterview, conversationMessages } = useInterviewAgent();
+    const { endInterview } = useInterviewAgent();
     const [isMuted, setIsMuted] = useState(false);
     const [endingState, setEndingState] = useState<EndingState>('idle');
     const [savedInterviewId, setSavedInterviewId] = useState<string | null>(null);
@@ -181,7 +172,7 @@ function Controls({ onDisconnect }: { onDisconnect: () => void }) {
                     
                     <div className="hidden md:block text-sm font-medium text-muted-foreground">
                         {endingState === 'saving' 
-                            ? `Saving ${conversationMessages.length} messages...`
+                            ? `Saving interview...`
                             : isMuted 
                                 ? "Microphone Muted" 
                                 : "Microphone Active"

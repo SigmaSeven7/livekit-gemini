@@ -84,22 +84,22 @@ export async function GET(request: NextRequest) {
       ? data[data.length - 1].createdAt.toISOString()
       : null;
 
-    return NextResponse.json({
-      data: data.map((interview) => {
-        // Parse JSON fields once to avoid redundant parsing
-        const config = interview.config ? JSON.parse(interview.config) : null;
-        const transcript = JSON.parse(interview.transcript);
+    const dataWithCount = data.map((interview) => {
+      const config = interview.config ? JSON.parse(interview.config) : null;
+      const transcript = JSON.parse(interview.transcript);
+      return {
+        id: interview.id,
+        createdAt: interview.createdAt,
+        updatedAt: interview.updatedAt,
+        status: interview.status,
+        config,
+        messageCount: transcript.length,
+        transcript,
+      };
+    });
 
-        return {
-          id: interview.id,
-          createdAt: interview.createdAt,
-          updatedAt: interview.updatedAt,
-          status: interview.status,
-          config,
-          messageCount: transcript.length,
-          transcript,
-        };
-      }),
+    return NextResponse.json({
+      data: dataWithCount,
       nextCursor: hasMore ? nextCursor : null,
       hasMore,
     });
