@@ -13,9 +13,9 @@ export const metadata: Metadata = {
 
 export default function Page() {
   return (
-    <div className="flex flex-col min-h-screen bg-gradient-to-br from-sky-50 via-stone-50 to-sky-50/30 font-sans text-gray-800 overflow-x-hidden">
+    <div className="flex flex-col min-h-screen bg-gradient-to-br from-sky-100 via-sky-50/95 to-blue-50 font-sans text-gray-800 overflow-x-hidden">
       {/* Friendly Header */}
-      <header className="flex items-center justify-between px-8 py-6 border-b border-stone-200/40 backdrop-blur-md bg-white/60 sticky top-0 z-50">
+      <header className="flex items-center justify-between px-8 py-6 border-b border-sky-200/50 backdrop-blur-md bg-white/70 sticky top-0 z-50">
         <div className="flex items-center gap-3">
           <div className="w-3 h-3 rounded-full bg-sky-200 animate-pulse"></div>
           <span className="font-normal tracking-wide text-sm text-gray-700">✨ AI Interview Practice</span>
@@ -38,7 +38,7 @@ export default function Page() {
       </main>
 
       {/* Friendly Footer */}
-      <footer className="py-8 border-t border-stone-200/40 text-center text-xs text-gray-500 font-light">
+      <footer className="py-8 border-t border-sky-200/50 text-center text-xs text-gray-500 font-light">
         <div className="flex items-center justify-center gap-2 mb-3">
           <span>Made with</span>
           <Heart className="w-3 h-3 text-red-400" />

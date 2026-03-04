@@ -121,7 +121,7 @@ export function SetupForm() {
     const experienceValueMap: Record<number, string> = { 1: "0-1", 2: "1-3", 3: "3-5", 4: "5-10", 5: "10+" };
 
     return (
-        <div className="relative min-h-screen bg-slate-50/50 pb-32 sm:pb-40 md:pb-48">
+        <div className="relative min-h-screen pb-32 sm:pb-40 md:pb-48 rounded-xl bg-transparent">
             <div className="max-w-4xl mx-auto px-4 sm:px-6 py-12 sm:py-16 space-y-16 sm:space-y-20">
 
                 {/* Header */}
