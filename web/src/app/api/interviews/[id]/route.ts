@@ -9,12 +9,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { ConversationMessage, InterviewStatus } from '@/types/conversation';
+import { processTranscriptsWithGroq, RawTranscriptSegment } from '@/lib/services/transcript-processor';
 
 interface UpdateInterviewBody {
   status?: InterviewStatus;
   config?: Record<string, unknown>;
   messages?: ConversationMessage[];
 }
+
+const AUDIO_SERVER_URL = process.env.AUDIO_SERVER_URL || 'http://localhost:3001';
 
 export async function GET(
   request: NextRequest,
@@ -41,6 +44,8 @@ export async function GET(
       status: interview.status,
       config: interview.config ? JSON.parse(interview.config) : null,
       messages: JSON.parse(interview.transcript),
+      processedTranscript: interview.processedTranscript ? JSON.parse(interview.processedTranscript) : [],
+      audioUrl: interview.audioUrl,
     });
   } catch (error) {
     console.error('Get interview error:', error);
@@ -71,7 +76,73 @@ export async function PUT(
       );
     }
 
-    // Build update data
+    // If status is being set to 'completed', fetch all data from agent, process, store, and cleanup
+    if (body.status === 'completed') {
+      try {
+        // Step 1: Fetch all data from agent DB via /getAudioFile
+        const audioServerRes = await fetch(
+          `${AUDIO_SERVER_URL}/getAudioFile?id=${encodeURIComponent(id)}`
+        );
+
+        if (!audioServerRes.ok) {
+          console.error('Failed to fetch from audio server:', audioServerRes.statusText);
+          return NextResponse.json(
+            { error: 'Failed to fetch audio data from agent server' },
+            { status: 502 }
+          );
+        }
+
+        const audioData = await audioServerRes.json();
+        const rawTranscripts = audioData.transcripts || [];
+        const audioUrl = audioData.audioUrl || null;
+
+        // Step 2: Process transcripts with Groq
+        const processedMessages = await processTranscriptsWithGroq(
+          rawTranscripts as RawTranscriptSegment[]
+        );
+
+        // Step 3: Update interview with processed transcript and audio URL
+        const interview = await prisma.interview.update({
+          where: { id },
+          data: {
+            status: 'completed',
+            transcript: JSON.stringify(body.messages || []),
+            processedTranscript: JSON.stringify(processedMessages),
+            audioUrl: audioUrl,
+          },
+        });
+
+        // Step 4: Delete data from agent DB
+        try {
+          await fetch(`${AUDIO_SERVER_URL}/interviews/${encodeURIComponent(id)}`, {
+            method: 'DELETE',
+          });
+        } catch (deleteError) {
+          console.warn('Failed to delete transcripts from agent DB:', deleteError);
+          // Don't fail the request if cleanup fails
+        }
+
+        return NextResponse.json({
+          id: interview.id,
+          createdAt: interview.createdAt,
+          updatedAt: interview.updatedAt,
+          status: interview.status,
+          config: interview.config ? JSON.parse(interview.config) : null,
+          transcript: JSON.parse(interview.transcript),
+          processedTranscript: interview.processedTranscript ? JSON.parse(interview.processedTranscript) : [],
+          audioUrl: interview.audioUrl,
+        });
+
+      } catch (processingError) {
+        console.error('Error processing interview completion:', processingError);
+        return NextResponse.json(
+          { error: 'Failed to process interview data' },
+          { status: 500 }
+        );
+      }
+    }
+
+    // Build update data for non-completion updates
     const updateData: {
       status?: string;
       config?: string | null;

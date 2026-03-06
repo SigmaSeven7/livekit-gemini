@@ -43,6 +43,8 @@ export async function GET(request: NextRequest) {
       status: interview.status as InterviewStatus,
       config: interview.config ? JSON.parse(interview.config) : null,
       transcript: JSON.parse(interview.transcript),
+      processedTranscript: interview.processedTranscript ? JSON.parse(interview.processedTranscript) : [],
+      audioUrl: interview.audioUrl,
       questions: interview.questions ? JSON.parse(interview.questions) : [],
     });
   } catch (error) {

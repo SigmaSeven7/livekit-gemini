@@ -528,6 +528,8 @@ R2_ENDPOINT = os.getenv("R2_ENDPOINT") or ""
 
 # SQLite database
 DB_PATH = Path(__file__).parent / "transcripts.db"
+TTL_MINUTES = 60  # Transcripts expire after 60 minutes
+
 
 def init_database():
     logger.info(f"Initializing database at: {DB_PATH}")
@@ -541,37 +543,98 @@ def init_database():
         logger.info("Creating transcripts table...")
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS transcripts (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id TEXT PRIMARY KEY,
                 room_name TEXT NOT NULL,
                 role TEXT NOT NULL,
                 content TEXT NOT NULL,
                 audio_start_ms REAL,
                 audio_end_ms REAL,
                 audio_source_url TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                ttl_expires_at TIMESTAMP
             )
         """)
         logger.info("transcripts table created successfully")
     else:
+        # Check if ttl_expires_at column exists, add if not
+        cursor.execute("PRAGMA table_info(transcripts)")
+        columns = [row[1] for row in cursor.fetchall()]
+        if 'ttl_expires_at' not in columns:
+            logger.info("Adding ttl_expires_at column to transcripts table...")
+            cursor.execute("ALTER TABLE transcripts ADD COLUMN ttl_expires_at TIMESTAMP")
         logger.info("transcripts table already exists")
 
     conn.commit()
     conn.close()
 
-def save_transcript(room_name: str, role: str, content: str, audio_start_ms: float, audio_end_ms: float):
+def get_next_transcript_index(room_name: str) -> int:
+    """Get the next index for a transcript in a room (1-based)."""
     try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         cursor.execute(
-            """INSERT INTO transcripts (room_name, role, content, audio_start_ms, audio_end_ms, audio_source_url)
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            (room_name, role, content, audio_start_ms, audio_end_ms, f"interviews/{room_name}.mp4")
+            "SELECT COUNT(*) FROM transcripts WHERE room_name = ?",
+            (room_name,)
+        )
+        count = cursor.fetchone()[0]
+        conn.close()
+        return count + 1  # 1-based index
+    except Exception as e:
+        logger.error(f"Failed to get transcript count: {e}")
+        return 1
+
+
+def save_transcript(room_name: str, role: str, content: str, audio_start_ms: float, audio_end_ms: float):
+    """Save a transcript entry to the database."""
+    try:
+        # Generate ID in format: {index}-{room_name}
+        index = get_next_transcript_index(room_name)
+        transcript_id = f"{index}-{room_name}"
+        
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute(
+            """INSERT INTO transcripts (id, room_name, role, content, audio_start_ms, audio_end_ms, audio_source_url, ttl_expires_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now', '+60 minutes'))""",
+            (transcript_id, room_name, role, content, audio_start_ms, audio_end_ms, f"interviews/{room_name}.mp4")
         )
         conn.commit()
         conn.close()
-        logger.info(f"Saved {role} transcript [{audio_start_ms:.0f}ms - {audio_end_ms:.0f}ms]: {content[:50]}...")
+        logger.info(f"Saved {role} transcript [{audio_start_ms:.0f}ms - {audio_end_ms:.0f}ms] (id: {transcript_id}): {content[:50]}...")
     except Exception as e:
         logger.error(f"Failed to save transcript: {e}")
+
+
+def cleanup_expired_transcripts():
+    """Delete transcripts that have exceeded their TTL."""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute(
+            "DELETE FROM transcripts WHERE ttl_expires_at < datetime('now')"
+        )
+        deleted_count = cursor.rowcount
+        conn.commit()
+        conn.close()
+        if deleted_count > 0:
+            logger.info(f"Cleaned up {deleted_count} expired transcripts")
+    except Exception as e:
+        logger.error(f"Failed to cleanup expired transcripts: {e}")
+
+
+def start_cleanup_scheduler():
+    """Start a background thread that runs cleanup every hour."""
+    import threading
+    
+    def run_periodic_cleanup():
+        while True:
+            cleanup_expired_transcripts()
+            # Run every hour (3600 seconds)
+            time.sleep(3600)
+    
+    cleanup_thread = threading.Thread(target=run_periodic_cleanup, daemon=True)
+    cleanup_thread.start()
+    logger.info("Started TTL cleanup scheduler (runs every hour)")
 
 @dataclass
 class SessionConfig:
@@ -993,5 +1056,4 @@ class SessionManager:
         await self.current_agent.update_instructions(original)  # Revert
 
 if __name__ == "__main__":
-    init_database()
     cli.run_app(WorkerOptions(agent_name='gemini-playground', entrypoint_fnc=entrypoint, worker_type=WorkerType.ROOM))

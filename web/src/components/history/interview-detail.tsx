@@ -1,10 +1,9 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { DemiChat } from "./demi-chat";
 import { InterviewStatus } from "@/types/conversation";
 import { Interview } from "@/types/interview";
-import { ConversationMessage } from "@/types/conversation";
 import { formatDateLong } from "@/lib/utils/date";
 import { STATUS_COLORS, STATUS_LABELS } from "@/lib/constants/interview";
 import { concatenateMessagesWithSameStartTime } from "@/lib/audio/playback-utils";
@@ -13,53 +12,15 @@ interface InterviewDetailProps {
   interview: Interview;
 }
 
-interface AudioData {
-  audioUrl: string;
-  transcripts: ConversationMessage[];
-}
-
 export function InterviewDetail({ interview }: InterviewDetailProps) {
   const [showMessages, setShowMessages] = useState(false);
-  const [audioData, setAudioData] = useState<AudioData | null>(null);
-  const [loadingAudio, setLoadingAudio] = useState(false);
-  const [audioError, setAudioError] = useState<string | null>(null);
-
-  // Fetch audio and transcripts when showing messages
-  useEffect(() => {
-    if (!showMessages || audioData) return;
-
-    const fetchAudioData = async () => {
-      setLoadingAudio(true);
-      setAudioError(null);
-
-      try {
-        const response = await fetch(
-          `http://localhost:3001/getAudioFile?id=${interview.id}`
-        );
-
-        if (!response.ok) {
-          throw new Error(`Failed to fetch audio: ${response.statusText}`);
-        }
-
-        const data = await response.json();
-        setAudioData(data);
-      } catch (error) {
-        console.error("Error fetching audio:", error);
-        setAudioError(error instanceof Error ? error.message : "Failed to load audio");
-      } finally {
-        setLoadingAudio(false);
-      }
-    };
-
-    fetchAudioData();
-  }, [showMessages, interview.id, audioData]);
 
   // Derive formatted dates during render (no useEffect needed)
   const formattedCreatedAt = formatDateLong(interview.createdAt);
   const formattedUpdatedAt = formatDateLong(interview.updatedAt);
 
-  // Use transcripts from audioData if available, otherwise fall back to interview.transcript
-  const rawMessages = audioData?.transcripts || interview.transcript || [];
+  // Use processedTranscript if available, otherwise fall back to transcript
+  const rawMessages = interview.processedTranscript || interview.transcript || [];
   
   // Concatenate messages with the same timestampStart
   const messages = useMemo(() => 
@@ -67,7 +28,7 @@ export function InterviewDetail({ interview }: InterviewDetailProps) {
     [rawMessages]
   );
   
-  const audioUrl = audioData?.audioUrl;
+  const audioUrl = interview.audioUrl;
 
   return (
     <div className="space-y-6">
@@ -190,22 +151,9 @@ export function InterviewDetail({ interview }: InterviewDetailProps) {
 
         {showMessages && (
           <div className="mt-6 pt-6 border-t border-slate-100">
-            {loadingAudio && (
-              <div className="flex items-center justify-center py-8">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
-                <span className="ml-3 text-slate-500">Loading audio...</span>
-              </div>
-            )}
-            {audioError && (
-              <div className="text-center py-8 text-red-500">
-                <p>Error loading audio: {audioError}</p>
-              </div>
-            )}
-            {!loadingAudio && !audioError && (
-              <div className="h-[600px]">
-                <DemiChat messages={messages} audioUrl={audioUrl} />
-              </div>
-            )}
+            <div className="h-[600px]">
+              <DemiChat messages={messages} audioUrl={audioUrl || undefined} />
+            </div>
           </div>
         )}
       </div>

@@ -17,7 +17,9 @@ model Interview {
   status      String   @default("in_progress") // in_progress | completed | paused
   config      String?  // JSON string of InterviewConfig
   transcript  String   @default("[]") // JSON string of ConversationMessage[]
-  questions   String?  @default("[]") // JSON string of InterviewQuestionList (stores generated questions & state)
+  processedTranscript String? @default("[]") // JSON string of Groq-modified ConversationMessage[]
+  audioUrl    String?  // Audio URL from getAudioFile endpoint
+  questions   String?  // JSON string of InterviewQuestionList (stores generated questions & state)
   
   messageHashes MessageHash[]
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Trash2 } from "lucide-react";
+import { Trash2, Check } from "lucide-react";
 import { InterviewStatus } from "@/types/conversation";
 import { formatDateShort } from "@/lib/utils/date";
 import { STATUS_COLORS, STATUS_LABELS } from "@/lib/constants/interview";
@@ -14,9 +14,11 @@ interface InterviewCardProps {
   config: Record<string, unknown> | null;
   onDelete?: (id: string) => void;
   isDeleting?: boolean;
+  isSelected?: boolean;
+  onSelect?: (id: string, selected: boolean) => void;
 }
 
-export function InterviewCard({ id, status, createdAt, messageCount, config, onDelete, isDeleting }: InterviewCardProps) {
+export function InterviewCard({ id, status, createdAt, messageCount, config, onDelete, isDeleting, isSelected, onSelect }: InterviewCardProps) {
   // Derive formatted date during render (no useEffect needed)
   const formattedDate = formatDateShort(createdAt);
 
@@ -32,9 +34,31 @@ export function InterviewCard({ id, status, createdAt, messageCount, config, onD
     onDelete?.(id);
   };
 
+  const handleSelectClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onSelect?.(id, !isSelected);
+  };
+
   return (
     <Link href={`/history/${id}`}>
-      <div className="bg-white border border-slate-100 rounded-2xl p-6 hover:shadow-lg transition-all cursor-pointer group relative">
+      <div className={`bg-white border rounded-2xl p-6 hover:shadow-lg transition-all cursor-pointer group relative ${isSelected ? 'border-indigo-500 ring-2 ring-indigo-200' : 'border-slate-100'}`}>
+        {/* Selection checkbox */}
+        {onSelect && (
+          <button
+            onClick={handleSelectClick}
+            className={`absolute top-4 left-4 w-6 h-6 rounded-md border-2 flex items-center justify-center transition-colors z-10 ${
+              isSelected 
+                ? 'bg-indigo-600 border-indigo-600' 
+                : 'border-slate-300 hover:border-indigo-400'
+            }`}
+            title={isSelected ? 'Deselect' : 'Select'}
+          >
+            {isSelected && <Check className="w-4 h-4 text-white" />}
+          </button>
+        )}
+
+        {/* Delete button */}
         {onDelete && (
           <button
             onClick={handleDeleteClick}
@@ -46,7 +70,7 @@ export function InterviewCard({ id, status, createdAt, messageCount, config, onD
           </button>
         )}
         <div className="flex items-start justify-between mb-4">
-          <div className="flex-1 min-w-0 pr-8">
+          <div className={`flex-1 min-w-0 ${onSelect ? 'pl-8' : 'pr-8'}`}>
             <div className="flex items-center gap-2 mb-2">
               <span className={`px-2 py-1 rounded-lg text-xs font-semibold border ${STATUS_COLORS[status]}`}>
                 {STATUS_LABELS[status]}

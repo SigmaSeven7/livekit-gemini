@@ -87,14 +87,19 @@ export async function GET(request: NextRequest) {
     const dataWithCount = data.map((interview) => {
       const config = interview.config ? JSON.parse(interview.config) : null;
       const transcript = JSON.parse(interview.transcript);
+      const processedTranscript = interview.processedTranscript ? JSON.parse(interview.processedTranscript) : [];
+      // Use processedTranscript if available, otherwise fall back to transcript
+      const messages = processedTranscript.length > 0 ? processedTranscript : transcript;
       return {
         id: interview.id,
         createdAt: interview.createdAt,
         updatedAt: interview.updatedAt,
         status: interview.status,
         config,
-        messageCount: transcript.length,
+        messageCount: messages.length,
         transcript,
+        processedTranscript,
+        audioUrl: interview.audioUrl,
       };
     });
 

@@ -134,41 +134,24 @@ export function InterviewAgentProvider({ children, interviewId }: InterviewAgent
         setDisplayTranscriptions(mergedSorted);
     }, [rawSegments]);
 
-    // End interview handler - fetches transcripts from agent, syncs to web, then marks completed
+    // End interview handler - calls the API which handles fetching from agent, processing with Groq, and cleanup
     const endInterview = React.useCallback(async (): Promise<{ success: boolean; interviewId: string }> => {
         try {
             console.log('Ending interview...');
 
-            const audioServerUrl = process.env.NEXT_PUBLIC_AUDIO_SERVER_URL || 'http://localhost:3001';
-            let messages: Array<{ transcriptId: string; interviewId: string; participant: string; transcript: string; timestampStart: number; timestampEnd: number; audioUrl: string | null; audioBase64: string | null }> = [];
-
-            try {
-                const transcriptsRes = await fetch(
-                    `${audioServerUrl}/getTranscripts?id=${encodeURIComponent(interviewId)}`
-                );
-                if (transcriptsRes.ok) {
-                    const data = await transcriptsRes.json();
-                    const raw = data.transcripts ?? [];
-                    messages = raw.map((t: { participant: string }) => ({
-                        ...t,
-                        participant: t.participant === 'candidate' ? 'user' : t.participant,
-                    }));
-                }
-            } catch (e) {
-                console.warn('Could not fetch transcripts for sync:', e);
-            }
-
+            // The API handles fetching data from agent, processing with Groq, storing in DB, and cleaning up
             const updateResponse = await fetch(`/api/interviews/${interviewId}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ status: 'completed', messages }),
+                body: JSON.stringify({ status: 'completed' }),
             });
 
             const success = updateResponse.ok;
             if (success) {
-                console.log('Interview marked as completed');
+                console.log('Interview marked as completed and processed');
             } else {
-                console.error('Failed to update interview status');
+                const error = await updateResponse.json();
+                console.error('Failed to update interview status:', error);
             }
 
             return {

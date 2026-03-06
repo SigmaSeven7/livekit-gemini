@@ -1,6 +1,8 @@
 import os
 import boto3
 import sqlite3
+import time
+import threading
 from botocore.config import Config
 from dotenv import load_dotenv
 from flask import Flask, jsonify, request
@@ -31,6 +33,66 @@ r2_client = boto3.client(
 
 # Database path
 DB_PATH = Path(__file__).parent / "transcripts.db"
+
+
+def init_database():
+    """Initialize the database schema."""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='transcripts'")
+    result = cursor.fetchone()
+
+    if not result:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS transcripts (
+                id TEXT PRIMARY KEY,
+                room_name TEXT NOT NULL,
+                role TEXT NOT NULL,
+                content TEXT NOT NULL,
+                audio_start_ms REAL,
+                audio_end_ms REAL,
+                audio_source_url TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                ttl_expires_at TIMESTAMP
+            )
+        """)
+        print("Created transcripts table")
+
+    conn.commit()
+    conn.close()
+
+
+def cleanup_expired_transcripts():
+    """Delete transcripts that have exceeded their TTL."""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM transcripts WHERE ttl_expires_at < datetime('now')")
+        deleted_count = cursor.rowcount
+        conn.commit()
+        conn.close()
+        if deleted_count > 0:
+            print(f"Cleaned up {deleted_count} expired transcripts")
+    except Exception as e:
+        print(f"Failed to cleanup expired transcripts: {e}")
+
+
+def start_cleanup_scheduler():
+    """Start a background thread that runs cleanup every hour."""
+    def run_periodic_cleanup():
+        while True:
+            cleanup_expired_transcripts()
+            time.sleep(3600)
+    
+    cleanup_thread = threading.Thread(target=run_periodic_cleanup, daemon=True)
+    cleanup_thread.start()
+    print("Started TTL cleanup scheduler (runs every hour)")
+
+
+# Initialize database and start scheduler on module load
+init_database()
+start_cleanup_scheduler()
 
 
 def get_transcript_count(room_name: str) -> int:
@@ -65,8 +127,12 @@ def get_transcripts(room_name: str):
 
         transcripts = []
         for row in rows:
+            # Parse the ID to extract the index number (format: {index}-{room_name})
+            raw_id = str(row["id"])
+            # Extract the index from the beginning of the ID
+            idx = raw_id.split("-")[0] if raw_id else "0"
             transcripts.append({
-                "transcriptId": str(row["id"]),
+                "transcriptId": idx,  # Return just the index number
                 "interviewId": room_name,
                 "participant": row["role"],
                 "transcript": row["content"],
@@ -160,6 +226,38 @@ def get_audio_file():
 def health_check():
     """Health check endpoint."""
     return jsonify({"status": "ok"})
+
+
+def delete_transcripts(room_name: str) -> int:
+    """Delete all transcript segments for a given room."""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM transcripts WHERE room_name = ?", (room_name,))
+        deleted_count = cursor.rowcount
+        conn.commit()
+        conn.close()
+        return deleted_count
+    except Exception as e:
+        print(f"Error deleting transcripts: {e}")
+        return 0
+
+
+@app.route("/interviews/<room_name>", methods=["DELETE"])
+def delete_interview(room_name: str):
+    """
+    Delete all transcripts for a specific interview/room.
+    Path param: room_name - the interview/room ID.
+    Returns JSON: { success: true, deleted: number }
+    """
+    try:
+        deleted_count = delete_transcripts(room_name)
+        return jsonify({
+            "success": True,
+            "deleted": deleted_count,
+        })
+    except Exception as e:
+        return jsonify({"error": f"Failed to delete transcripts: {str(e)}"}), 500
 
 
 if __name__ == "__main__":

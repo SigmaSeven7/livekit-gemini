@@ -20,6 +20,10 @@ export interface Interview {
   config: Record<string, unknown> | null;
   /** Array of conversation messages (parsed from transcript JSON) */
   transcript: ConversationMessage[];
+  /** Groq-processed conversation messages */
+  processedTranscript?: ConversationMessage[];
+  /** Audio URL from getAudioFile endpoint */
+  audioUrl?: string | null;
   /** Number of messages in the conversation (from Prisma or audio server) */
   messageCount?: number;
   /** Generated interview questions */
