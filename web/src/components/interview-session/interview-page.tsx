@@ -1,10 +1,27 @@
 "use client";
 
 import React, { useEffect, useState, useRef, useCallback } from "react";
-import { LiveKitRoom, RoomAudioRenderer, StartAudio, BarVisualizer, useTracks, useRoomContext } from "@livekit/components-react";
+import {
+  LiveKitRoom,
+  RoomAudioRenderer,
+  BarVisualizer,
+  useTracks,
+  useRoomContext,
+} from "@livekit/components-react";
 import { Track } from "livekit-client";
-import { InterviewConfig } from "@/data/interview-options";
+import type { LocalAudioTrack } from "livekit-client";
+import dynamic from "next/dynamic";
 import { InterviewAgentProvider, useInterviewAgent } from "./interview-agent-provider";
+import { PreFlightTrackPublisher } from "./preflight-track-publisher";
+
+const PreFlightAudioCheck = dynamic(
+    () =>
+        import("./preflight-audio-check").then((m) => ({
+            default: m.PreFlightAudioCheck,
+        })),
+    { ssr: false }
+);
+import { usePreFlightContext } from "@/contexts/preflight-context";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { PhoneOff, Mic, MicOff, Loader2, CheckCircle2, XCircle } from "lucide-react";
@@ -240,16 +257,30 @@ function InterviewSessionContent({ onDisconnect }: { onDisconnect: () => void })
 
 export function InterviewPage({ roomId }: { roomId: string }) {
     const router = useRouter();
+    const { takeAndClearTrack } = usePreFlightContext();
+    const [configForToken, setConfigForToken] = useState<Record<string, unknown> | null>(null);
     const [token, setToken] = useState("");
     const [wsUrl, setWsUrl] = useState("");
     const [setupError, setSetupError] = useState<string | null>(null);
+    const [preFlightPassed, setPreFlightPassed] = useState(false);
+    const [calibratedTrack, setCalibratedTrack] = useState<LocalAudioTrack | null>(null);
 
+    // Check for track from setup-form pre-flight (passed before navigation) — run once on mount
+    useEffect(() => {
+        const trackFromContext = takeAndClearTrack();
+        if (trackFromContext) {
+            setCalibratedTrack(trackFromContext);
+            setPreFlightPassed(true);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    // 1. Fetch interview config only (no token yet)
     useEffect(() => {
         let cancelled = false;
 
         const init = async () => {
             try {
-                // Fetch config and questions from DB — no sessionStorage dependency
                 const interviewRes = await fetch(`/api/history?id=${roomId}`);
                 if (!interviewRes.ok) {
                     throw new Error(`Failed to load interview: ${interviewRes.status}`);
@@ -261,16 +292,36 @@ export function InterviewPage({ roomId }: { roomId: string }) {
 
                 if (cancelled) return;
 
-                // Merge questions into config so the agent receives them in metadata
                 const configWithQuestions = {
                     ...interview.config,
                     questions: interview.questions ?? [],
                 };
+                setConfigForToken(configWithQuestions);
+            } catch (e) {
+                if (cancelled) return;
+                console.error("Interview setup failed:", e);
+                setSetupError(e instanceof Error ? e.message : "Failed to start interview. Please try again.");
+            }
+        };
 
+        init();
+        return () => {
+            cancelled = true;
+        };
+    }, [roomId]);
+
+    // 2. Fetch token only after pre-flight passes
+    useEffect(() => {
+        if (!preFlightPassed || !configForToken) return;
+
+        let cancelled = false;
+
+        const fetchToken = async () => {
+            try {
                 const tokenRes = await fetch("/api/interview-token", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ roomName: roomId, config: configWithQuestions }),
+                    body: JSON.stringify({ roomName: roomId, config: configForToken }),
                 });
                 if (!tokenRes.ok) {
                     throw new Error(`Token request failed: ${tokenRes.status}`);
@@ -285,14 +336,21 @@ export function InterviewPage({ roomId }: { roomId: string }) {
                 setWsUrl(tokenData.url);
             } catch (e) {
                 if (cancelled) return;
-                console.error("Interview setup failed:", e);
-                setSetupError(e instanceof Error ? e.message : "Failed to start interview. Please try again.");
+                console.error("Token fetch failed:", e);
+                setSetupError(e instanceof Error ? e.message : "Failed to connect. Please try again.");
             }
         };
 
-        init();
-        return () => { cancelled = true; };
-    }, [roomId]);
+        fetchToken();
+        return () => {
+            cancelled = true;
+        };
+    }, [preFlightPassed, roomId, configForToken]);
+
+    const handlePreFlightSuccess = useCallback((track: LocalAudioTrack) => {
+        setCalibratedTrack(track);
+        setPreFlightPassed(true);
+    }, []);
 
     if (setupError) {
         return (
@@ -308,13 +366,41 @@ export function InterviewPage({ roomId }: { roomId: string }) {
         );
     }
 
+    // Config still loading
+    if (!configForToken) {
+        return (
+            <div className="flex flex-col items-center justify-center h-screen bg-background">
+                <div className="relative flex items-center justify-center">
+                    <div className="w-16 h-16 border-4 border-primary/20 border-t-primary rounded-full animate-spin" />
+                </div>
+                <p className="mt-6 text-sm font-medium text-muted-foreground animate-pulse">
+                    Initializing Secure Environment...
+                </p>
+            </div>
+        );
+    }
+
+    // Pre-flight audio check (before room connection)
+    if (!preFlightPassed) {
+        return (
+            <div className="flex flex-col items-center justify-center h-screen bg-background">
+                <div className="w-full max-w-lg rounded-2xl border border-border bg-card p-8 shadow-lg">
+                    <PreFlightAudioCheck onSuccess={handlePreFlightSuccess} roomId={roomId} />
+                </div>
+            </div>
+        );
+    }
+
+    // Token loading after pre-flight pass
     if (!token || !wsUrl) {
         return (
             <div className="flex flex-col items-center justify-center h-screen bg-background">
                 <div className="relative flex items-center justify-center">
                     <div className="w-16 h-16 border-4 border-primary/20 border-t-primary rounded-full animate-spin" />
                 </div>
-                <p className="mt-6 text-sm font-medium text-muted-foreground animate-pulse">Initializing Secure Environment...</p>
+                <p className="mt-6 text-sm font-medium text-muted-foreground animate-pulse">
+                    Connecting to interview...
+                </p>
             </div>
         );
     }
@@ -324,17 +410,17 @@ export function InterviewPage({ roomId }: { roomId: string }) {
             serverUrl={wsUrl}
             token={token}
             connect={true}
-            audio={true}
+            audio={false}
             className="h-screen w-full bg-background"
         >
             <InterviewAgentProvider interviewId={roomId}>
+                <PreFlightTrackPublisher calibratedTrack={calibratedTrack} />
                 <div className="h-full w-full flex items-center justify-center">
                     <div className="w-full h-full max-w-6xl shadow-2xl md:border-x border-border">
                         <InterviewSessionContent onDisconnect={() => router.push("/")} />
                     </div>
                 </div>
                 <RoomAudioRenderer />
-                <StartAudio label="Enter Interview Room" />
             </InterviewAgentProvider>
         </LiveKitRoom>
     );

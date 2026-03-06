@@ -1,7 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
+import { usePreFlightContext } from "@/contexts/preflight-context";
+
+const PreFlightAudioCheck = dynamic(
+    () =>
+        import("@/components/interview-session/preflight-audio-check").then(
+            (m) => ({ default: m.PreFlightAudioCheck })
+        ),
+    { ssr: false }
+);
 import {
     ArrowRight,
     Sparkles,
@@ -31,6 +41,8 @@ const SUPPORT_EMAIL = process.env.NEXT_PUBLIC_SUPPORT_EMAIL || 'support@example.
 
 export function SetupForm() {
     const router = useRouter();
+    const { passPreFlight } = usePreFlightContext();
+    const [showPreFlight, setShowPreFlight] = useState(false);
     const [config, setConfig] = useState<Partial<InterviewConfig>>({
         interviewer_role: "Tech Lead",
         interviewer_personality: "Warm & Welcoming",
@@ -49,69 +61,67 @@ export function SetupForm() {
     const [isCreating, setIsCreating] = useState(false);
     const [showErrorDialog, setShowErrorDialog] = useState(false);
 
-    const handleStart = async () => {
-        if (isCreating) {
-            return;
-        }
-
-        setIsCreating(true);
-
-        try {
-            // 1. Generate Questions first
-            const genResponse = await fetch('/api/questions/generate', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ config }),
-            });
-
-            if (!genResponse.ok) {
-                console.error('Failed to generate questions');
-                throw new Error('Failed to generate interview questions');
-            }
-
-            const genData = await genResponse.json();
-            const questions = genData.questions || [];
-
-            // 2. Create interview in database with the generated questions
-            const response = await fetch('/api/interviews', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    config,
-                    status: 'in_progress',
-                    questions
-                }),
-            });
-
-            if (!response.ok) {
-                const errorText = await response.text();
-                console.error('Failed to create interview:', errorText);
-                setIsCreating(false);
-                setShowErrorDialog(true);
-                return;
-            }
-
-            const interview = await response.json();
-
-            const interviewId = interview.id;
-            if (!interviewId) {
-                console.error('No interview ID in response');
-                setIsCreating(false);
-                setShowErrorDialog(true);
-                return;
-            }
-
-            router.push(`/interview/${interviewId}`);
-
-
-        } catch (error) {
-            console.error('Error in handleStart:', error);
-            setIsCreating(false);
-            setShowErrorDialog(true);
-        }
-        // Note: No finally block needed - isCreating is reset on error paths,
-        // and on success we're navigating away so it doesn't matter
+    const handleStart = () => {
+        if (isCreating) return;
+        setShowPreFlight(true);
     };
+
+    const handlePreFlightSuccess = useCallback(
+        async (track: import("livekit-client").LocalAudioTrack) => {
+            passPreFlight(track);
+            setIsCreating(true);
+
+            try {
+                const genResponse = await fetch('/api/questions/generate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ config }),
+                });
+
+                if (!genResponse.ok) {
+                    throw new Error('Failed to generate interview questions');
+                }
+
+                const genData = await genResponse.json();
+                const questions = genData.questions || [];
+
+                const response = await fetch('/api/interviews', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        config,
+                        status: 'in_progress',
+                        questions,
+                    }),
+                });
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('Failed to create interview:', errorText);
+                    setIsCreating(false);
+                    setShowErrorDialog(true);
+                    return;
+                }
+
+                const interview = await response.json();
+                const interviewId = interview.id;
+
+                if (!interviewId) {
+                    console.error('No interview ID in response');
+                    setIsCreating(false);
+                    setShowErrorDialog(true);
+                    return;
+                }
+
+                router.push(`/interview/${interviewId}`);
+            } catch (error) {
+                console.error('Error creating interview:', error);
+                setIsCreating(false);
+                setShowErrorDialog(true);
+            }
+        },
+        [config, passPreFlight, router]
+    );
 
     const handleChange = (field: keyof InterviewConfig, value: any) => {
         setConfig(prev => ({ ...prev, [field]: value }));
@@ -119,6 +129,27 @@ export function SetupForm() {
 
     // Mapping for experience display
     const experienceValueMap: Record<number, string> = { 1: "0-1", 2: "1-3", 3: "3-5", 4: "5-10", 5: "10+" };
+
+    if (showPreFlight) {
+        return (
+            <div className="flex flex-col min-h-[80vh] items-center justify-center px-4 py-12">
+                <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-8 shadow-xl">
+                    <PreFlightAudioCheck
+                        onSuccess={handlePreFlightSuccess}
+                        successButtonLabel="Continue to Interview"
+                    />
+                </div>
+                <Button
+                    variant="ghost"
+                    className="mt-6 text-slate-600 hover:text-slate-900"
+                    onClick={() => setShowPreFlight(false)}
+                    disabled={isCreating}
+                >
+                    Go Back
+                </Button>
+            </div>
+        );
+    }
 
     return (
         <div className="relative min-h-screen pb-32 sm:pb-40 md:pb-48 rounded-xl bg-transparent">
