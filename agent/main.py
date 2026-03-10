@@ -507,9 +507,13 @@ from livekit.agents import (
 )
 from livekit.plugins import google
 from livekit.plugins import silero
+from livekit.plugins import simli
 
 # Ensure this file exists in your directory
 from interview_prompts import INTERVIEW_PROMPTS
+
+# Feature flag: Enable Simli avatar support
+SIMLI_AVATAR_ENABLED = os.getenv("SIMLI_AVATAR_ENABLED", "false").lower() == "true"
 
 load_dotenv(dotenv_path=".env.local")
 
@@ -845,6 +849,10 @@ class SessionManager:
         # Exact R2 sync zero-point
         self.recording_start_time = 0.0
         
+        # Simli avatar session (conditionally initialized)
+        self.avatar_session: simli.AvatarSession | None = None
+        self.use_simli = SIMLI_AVATAR_ENABLED and os.getenv("SIMLI_API_KEY")
+        
         # Dedicated strict trackers for each participant
         self.agent_tracker = IntervalTracker()
         self.user_tracker = IntervalTracker()
@@ -920,7 +928,27 @@ class SessionManager:
         
         self.current_session = self.create_session(self.current_config)
 
-        # 1. Establish the Zero Point
+        # 1. Conditionally initialize Simli avatar
+        if self.use_simli:
+            try:
+                logger.info("Initializing Simli avatar...")
+                self.avatar_session = simli.AvatarSession(
+                    simli_config=simli.SimliConfig(
+                        api_key=os.getenv("SIMLI_API_KEY"),
+                        face_id=os.getenv("SIMLI_FACE_ID") or "",  # Use default if not specified
+                        emotion_id=os.getenv("SIMLI_EMOTION_ID") or "neutral",
+                    ),
+                )
+                
+                # Start avatar and wait for it to join
+                await self.avatar_session.start(session=self.current_session, room=ctx.room)
+                logger.info("Simli avatar started successfully")
+            except Exception as e:
+                logger.warning(f"Failed to initialize Simli avatar: {e}. Falling back to agent-only mode.")
+                self.use_simli = False
+                self.avatar_session = None
+
+        # 2. Establish the Zero Point
         await self._start_r2_recording(ctx.room.name)
 
         # 2. Track VAD directly into the Queues

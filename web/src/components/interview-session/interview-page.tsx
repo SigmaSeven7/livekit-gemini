@@ -21,6 +21,14 @@ const PreFlightAudioCheck = dynamic(
         })),
     { ssr: false }
 );
+
+const Avatar3D = dynamic(
+    () =>
+        import("./avatar-3d").then((m) => ({
+            default: m.Avatar3D,
+        })),
+    { ssr: false }
+);
 import { usePreFlightContext } from "@/contexts/preflight-context";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -248,9 +256,15 @@ function InterviewSessionContent({ onDisconnect }: { onDisconnect: () => void })
                 </div>
             </header>
 
-            <Transcript />
-
-            <Controls onDisconnect={onDisconnect} />
+            <div className="flex-1 flex overflow-hidden">
+                <div className="w-1/3 min-w-[300px] max-w-[400px] border-r border-border">
+                    <Avatar3D modelPath="/male.glb" className="h-full w-full scale-90" isActive={true} />
+                </div>
+                <div className="flex-1 flex flex-col">
+                    <Transcript />
+                    <Controls onDisconnect={onDisconnect} />
+                </div>
+            </div>
         </div>
     )
 }
@@ -416,7 +430,7 @@ export function InterviewPage({ roomId }: { roomId: string }) {
             <InterviewAgentProvider interviewId={roomId}>
                 <PreFlightTrackPublisher calibratedTrack={calibratedTrack} />
                 <div className="h-full w-full flex items-center justify-center">
-                    <div className="w-full h-full max-w-6xl shadow-2xl md:border-x border-border">
+                    <div className="w-full h-full shadow-2xl md:border-x border-border">
                         <InterviewSessionContent onDisconnect={() => router.push("/")} />
                     </div>
                 </div>

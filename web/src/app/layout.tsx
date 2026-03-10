@@ -23,6 +23,19 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        <script
+          type="importmap"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              imports: {
+                three: "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
+              },
+            }),
+          }}
+        />
+      </head>
       <body className={roboto.className} suppressHydrationWarning>
         <ReactQueryProvider>
             <PreFlightProvider>
