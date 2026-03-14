@@ -18,10 +18,19 @@ export function PreFlightProvider({ children }: { children: React.ReactNode }) {
     useState<LocalAudioTrack | null>(null);
 
   const passPreFlight = useCallback((track: LocalAudioTrack) => {
+    console.log("[PreFlightContext] passPreFlight called with track:", {
+      id: track.id,
+      sid: track.sid,
+      muted: track.isMuted
+    });
     setCalibratedTrack(track);
   }, []);
 
   const takeAndClearTrack = useCallback(() => {
+    console.log("[PreFlightContext] takeAndClearTrack called, current track:", calibratedTrack ? {
+      id: calibratedTrack.id,
+      sid: calibratedTrack.sid
+    } : null);
     const current = calibratedTrack;
     setCalibratedTrack(null);
     return current;

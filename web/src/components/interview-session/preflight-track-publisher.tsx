@@ -16,25 +16,48 @@ export function PreFlightTrackPublisher({
   const publishedRef = useRef(false);
 
   useEffect(() => {
-    if (!calibratedTrack || publishedRef.current) return;
+    if (!calibratedTrack) {
+      console.log("[PreFlightTrackPublisher] No calibrated track available");
+      return;
+    }
 
     const publish = async () => {
-      if (room.state !== ConnectionState.Connected) return;
-      if (publishedRef.current) return;
+      if (room.state !== ConnectionState.Connected) {
+        console.log("[PreFlightTrackPublisher] Room not connected yet, state:", room.state);
+        return;
+      }
+      if (publishedRef.current) {
+        console.log("[PreFlightTrackPublisher] Track already published");
+        return;
+      }
 
       try {
+        console.log("[PreFlightTrackPublisher] Publishing calibrated track...");
+        console.log("[PreFlightTrackPublisher] Track info:", {
+          id: calibratedTrack.id,
+          sid: calibratedTrack.sid,
+          muted: calibratedTrack.isMuted,
+          source: Track.Source.Microphone
+        });
+        
         await room.localParticipant.publishTrack(calibratedTrack, {
           source: Track.Source.Microphone,
         });
+        
         publishedRef.current = true;
+        console.log("[PreFlightTrackPublisher] Track published successfully!");
+        console.log("[PreFlightTrackPublisher] Local participant SID:", room.localParticipant.sid);
+        console.log("[PreFlightTrackPublisher] Published tracks:", room.localParticipant.tracks);
       } catch (e) {
-        console.error("Failed to publish pre-flight track:", e);
+        console.error("[PreFlightTrackPublisher] Failed to publish track:", e);
       }
     };
 
     if (room.state === ConnectionState.Connected) {
+      console.log("[PreFlightTrackPublisher] Room already connected, publishing immediately");
       publish();
     } else {
+      console.log("[PreFlightTrackPublisher] Waiting for room connection...");
       room.on("connected", publish);
       return () => {
         room.off("connected", publish);

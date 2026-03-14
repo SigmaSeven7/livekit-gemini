@@ -69,14 +69,25 @@ export function InterviewAgentProvider({ children, interviewId }: InterviewAgent
     // Handle transcription events - populate rawSegments only (no persistence)
     useEffect(() => {
         if (!room) {
+            console.log("[InterviewAgentProvider] No room available yet");
             return;
         }
+
+        console.log("[InterviewAgentProvider] Setting up transcription listener for room:", room.name);
 
         const updateRawSegments = (
             segments: TranscriptionSegment[],
             participant?: Participant,
             publication?: TrackPublication,
         ) => {
+            console.log("[InterviewAgentProvider] Transcription received:", {
+                segmentCount: segments.length,
+                participantIdentity: participant?.identity,
+                participantIsAgent: participant?.isAgent,
+                trackSid: publication?.trackSid,
+                segments: segments.map(s => ({ id: s.id, text: s.text?.substring(0, 50) + '...', fromAgent: s.fromAgent }))
+            });
+
             setRawSegments((prev) => {
                 const newSegments = { ...prev };
                 for (const segment of segments) {
@@ -87,6 +98,22 @@ export function InterviewAgentProvider({ children, interviewId }: InterviewAgent
         };
 
         room.on(RoomEvent.TranscriptionReceived, updateRawSegments);
+
+        console.log("[InterviewAgentProvider] Transcription listener registered");
+
+        // Log existing participants
+        console.log("[InterviewAgentProvider] Remote participants:", 
+            Array.from(room.remoteParticipants.values()).map(p => ({
+                identity: p.identity,
+                sid: p.sid,
+                isAgent: p.isAgent,
+                tracks: Array.from(p.tracks.values()).map(t => ({
+                    sid: t.trackSid,
+                    source: t.source,
+                    muted: t.isMuted
+                }))
+            }))
+        );
 
         return () => {
             room.off(RoomEvent.TranscriptionReceived, updateRawSegments);

@@ -50,7 +50,7 @@ function Transcript() {
     return (
         <div 
             ref={scrollRef}
-            className="flex-1 overflow-y-auto px-6 py-8 space-y-6 scroll-smooth"
+            className="flex-1 overflow-y-auto px-3 sm:px-6 py-4 sm:py-8 space-y-4 sm:space-y-6 scroll-smooth"
         >
             <div className="max-w-5xl mx-auto space-y-6">
                 {displayTranscriptions.map(({ segment, participant }) => {
@@ -182,49 +182,52 @@ function Controls({ onDisconnect }: { onDisconnect: () => void }) {
     };
 
     return (
-        <div className="w-full bg-background/80 backdrop-blur-xl border-t border-border p-6">
-            <div className="max-w-6xl mx-auto flex items-center justify-between">
-                <div className="flex-1 flex items-center gap-4">
+        <div className="w-full bg-background/80 backdrop-blur-xl border-t border-border p-3 sm:p-6">
+            <div className="max-w-6xl mx-auto flex items-center justify-between gap-2 sm:gap-4">
+                {/* Mic Button */}
+                <div className="flex items-center gap-2 sm:gap-4">
                     <Button
                         variant="outline"
                         size="icon"
                         className={cn(
-                            "h-12 w-12 rounded-xl transition-all border-2", 
+                            "h-10 w-10 sm:h-12 sm:w-12 rounded-xl transition-all border-2", 
                             isMuted ? "border-destructive text-destructive bg-destructive/5" : "hover:border-primary"
                         )}
                         onClick={toggleMute}
                         disabled={endingState !== 'idle'}
                     >
-                        {isMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+                        {isMuted ? <MicOff className="h-4 w-4 sm:h-5 sm:w-5" /> : <Mic className="h-4 w-4 sm:h-5 sm:w-5" />}
                     </Button>
-                    
-                    <div className="hidden md:block text-sm font-medium text-muted-foreground">
-                        {endingState === 'saving' 
-                            ? `Saving interview...`
-                            : isMuted 
-                                ? "Microphone Muted" 
-                                : "Microphone Active"
+
+                    <span className="hidden sm:block text-xs sm:text-sm font-medium text-muted-foreground">
+                        {endingState === 'saving'
+                            ? `Saving...`
+                            : isMuted
+                                ? "Muted"
+                                : "Live"
                         }
-                    </div>
+                    </span>
                 </div>
 
-                <div className="flex-1 flex justify-center">
-                    <div className="h-10 w-64 bg-muted/30 rounded-full px-4 flex items-center overflow-hidden">
+                {/* Audio Visualizer - Hidden on small mobile */}
+                <div className="hidden xs:flex flex-1 justify-center max-w-[200px] sm:max-w-[256px]">
+                    <div className="h-8 sm:h-10 w-32 sm:w-64 bg-muted/30 rounded-full px-2 sm:px-4 flex items-center overflow-hidden">
                         <BarVisualizer
                             state="listening"
-                            barCount={7}
+                            barCount={5}
                             trackRef={useTracks([Track.Source.Microphone]).find(t => t.participant.isLocal)}
-                            className="h-6 w-full"
+                            className="h-4 sm:h-6 w-full"
                         />
                     </div>
                 </div>
 
-                <div className="flex-1 flex justify-end">
+                {/* End Button */}
+                <div className="flex items-center">
                     <Button
                         variant={endingState === 'success' ? 'secondary' : endingState === 'error' ? 'outline' : 'destructive'}
-                        size="lg"
+                        size="sm"
                         className={cn(
-                            "h-12 px-6 rounded-xl font-semibold shadow-lg transition-all",
+                            "h-10 sm:h-12 px-3 sm:px-6 rounded-xl font-semibold shadow-lg transition-all text-xs sm:text-sm",
                             endingState === 'success' && "bg-green-600 hover:bg-green-700 shadow-green-600/20",
                             endingState === 'error' && "border-destructive text-destructive",
                             endingState === 'idle' && "shadow-destructive/10 hover:shadow-destructive/20"
@@ -243,7 +246,7 @@ function Controls({ onDisconnect }: { onDisconnect: () => void }) {
 function InterviewSessionContent({ onDisconnect }: { onDisconnect: () => void }) {
     return (
         <div className="flex flex-col h-screen w-full bg-background overflow-hidden">
-            <header className="flex items-center justify-between px-8 py-4 border-b border-border bg-background/50 backdrop-blur-sm z-20">
+            <header className="flex items-center justify-between px-4 sm:px-8 py-3 sm:py-4 border-b border-border bg-background/50 backdrop-blur-sm z-20">
                 <div className="flex items-center gap-3">
                     <div className="relative flex h-3 w-3">
                         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
@@ -251,15 +254,18 @@ function InterviewSessionContent({ onDisconnect }: { onDisconnect: () => void })
                     </div>
                     <h1 className="text-sm font-bold uppercase tracking-tighter">Live Session</h1>
                 </div>
-                <div className="px-3 py-1 bg-muted rounded-full text-[11px] font-bold text-muted-foreground">
-                    ROOM_ID: LIVE_SESSION_ACTIVE
+                <div className="px-2 sm:px-3 py-1 bg-muted rounded-full text-[10px] sm:text-[11px] font-bold text-muted-foreground">
+                    LIVE
                 </div>
             </header>
 
             <div className="flex-1 flex overflow-hidden">
-                <div className="w-1/3 min-w-[300px] max-w-[400px] border-r border-border">
+                {/* Avatar Section - Desktop only */}
+                <div className="hidden md:flex w-1/3 min-w-[300px] max-w-[400px] border-r border-border">
                     <Avatar3D modelPath="/male.glb" className="h-full w-full scale-90" isActive={true} />
                 </div>
+                
+                {/* Transcript Section - Always visible */}
                 <div className="flex-1 flex flex-col">
                     <Transcript />
                     <Controls onDisconnect={onDisconnect} />
