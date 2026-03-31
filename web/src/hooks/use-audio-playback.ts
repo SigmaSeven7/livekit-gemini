@@ -3,7 +3,7 @@ import { applySmoothingToSamples, encodeToWavBase64 } from "@/lib/audio/wav-enco
 
 export interface AudioSliceResult {
     /** Raw audio samples */
-    samples: Float32Array<ArrayBuffer>;
+    samples: Float32Array;
     /** Sample rate in Hz */
     sampleRate: number;
 }

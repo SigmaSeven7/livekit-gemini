@@ -43,7 +43,7 @@ export function InterviewNotFound() {
         <div className="max-w-4xl mx-auto">
           <div className="bg-white border border-slate-100 rounded-2xl p-12 text-center">
             <h1 className="text-2xl font-bold text-slate-900 mb-4">Interview Not Found</h1>
-            <p className="text-slate-600 mb-2">The interview you're looking for doesn't exist or has been deleted.</p>
+            <p className="text-slate-600 mb-2">The interview you&apos;re looking for doesn&apos;t exist or has been deleted.</p>
             <p className="text-sm text-slate-500">Redirecting to home page in 3 seconds...</p>
             <Link
               href="/"

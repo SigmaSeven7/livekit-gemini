@@ -1,9 +1,7 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
-import dynamic from "next/dynamic";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { usePreFlightContext } from "@/contexts/preflight-context";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
@@ -20,7 +18,6 @@ import {
     Languages,
     Building2,
     EyeOff,
-    ChevronRight,
     Users,
     Briefcase,
     FileText,
@@ -29,25 +26,15 @@ import {
     Mic,
     Calendar,
     LucideIcon,
-    Info,
 } from "lucide-react";
 import {
     INTERVIEWER_PERSONALITIES,
     INTERVIEW_MODES,
     INTERVIEW_LANGUAGES,
     GENDER_PROMPTS,
-    EXPERIENCE_LEVELS,
     COMPANY_TYPES,
     InterviewConfig
 } from "@/data/interview-options";
-
-const PreFlightAudioCheck = dynamic(
-    () =>
-        import("@/components/interview-session/preflight-audio-check").then(
-            (m) => ({ default: m.PreFlightAudioCheck })
-        ),
-    { ssr: false }
-);
 
 const SUPPORT_EMAIL = process.env.NEXT_PUBLIC_SUPPORT_EMAIL || 'support@example.com';
 
@@ -60,10 +47,7 @@ const STEPS: { id: number; title: string; description: string; icon: LucideIcon 
 
 export function SetupForm() {
     const router = useRouter();
-    const { passPreFlight } = usePreFlightContext();
-    const [showPreFlight, setShowPreFlight] = useState(false);
     const [currentStep, setCurrentStep] = useState(1);
-    const [direction, setDirection] = useState<"forward" | "backward">("forward");
     const [config, setConfig] = useState<Partial<InterviewConfig>>({
         interviewer_role: "Tech Lead",
         interviewer_personality: "Warm & Welcoming",
@@ -87,119 +71,101 @@ export function SetupForm() {
         setMounted(true);
     }, []);
 
-    const handleStart = () => {
+    const handleStart = async () => {
         if (isCreating) return;
-        setShowPreFlight(true);
-    };
+        setIsCreating(true);
 
-    const handlePreFlightSuccess = useCallback(
-        async (track: import("livekit-client").LocalAudioTrack) => {
-            passPreFlight(track);
-            setIsCreating(true);
+        try {
+            const genResponse = await fetch('/api/questions/generate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ config }),
+            });
 
-            try {
-                const genResponse = await fetch('/api/questions/generate', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ config }),
-                });
+            if (!genResponse.ok) {
+                throw new Error('Failed to generate interview questions');
+            }
 
-                if (!genResponse.ok) {
-                    throw new Error('Failed to generate interview questions');
-                }
+            const genData = await genResponse.json();
+            const questions = genData.questions || [];
 
-                const genData = await genResponse.json();
-                const questions = genData.questions || [];
+            const response = await fetch('/api/interviews', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    config,
+                    status: 'in_progress',
+                    questions,
+                }),
+            });
 
-                const response = await fetch('/api/interviews', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        config,
-                        status: 'in_progress',
-                        questions,
-                    }),
-                });
-
-                if (!response.ok) {
-                    const errorText = await response.text();
-                    console.error('Failed to create interview:', errorText);
-                    setIsCreating(false);
-                    setShowErrorDialog(true);
-                    return;
-                }
-
-                const interview = await response.json();
-                const interviewId = interview.id;
-
-                if (!interviewId) {
-                    console.error('No interview ID in response');
-                    setIsCreating(false);
-                    setShowErrorDialog(true);
-                    return;
-                }
-
-                router.push(`/interview/${interviewId}`);
-            } catch (error) {
-                console.error('Error creating interview:', error);
+            if (!response.ok) {
+                const errorBody = await response.json().catch(() => null);
+                console.error('Failed to create interview:', errorBody);
                 setIsCreating(false);
                 setShowErrorDialog(true);
+                return;
             }
-        },
-        [config, passPreFlight, router]
-    );
+
+            const interview = await response.json();
+            const interviewId = interview.id;
+
+            if (!interviewId) {
+                console.error('No interview ID in response');
+                setIsCreating(false);
+                setShowErrorDialog(true);
+                return;
+            }
+
+            setIsCreating(false);
+            const targetPath = `/interview/${interviewId}`;
+
+            if (process.env.NODE_ENV === 'development') {
+                // Warm route chunks + RSC payload before navigating so the interview page
+                // can hydrate on first paint (dev compiles on demand; cold full loads often stall).
+                router.prefetch(targetPath);
+                await new Promise((resolve) => setTimeout(resolve, 200));
+            }
+
+            router.push(targetPath);
+
+            if (process.env.NODE_ENV === 'development') {
+                // HMR can cancel client-side navigation; hard-nav if we're still on setup.
+                window.setTimeout(() => {
+                    if (!window.location.pathname.startsWith('/interview/')) {
+                        window.location.href = targetPath;
+                    }
+                }, 1200);
+            }
+        } catch (error) {
+            console.error('Error creating interview:', error);
+            setIsCreating(false);
+            setShowErrorDialog(true);
+        }
+    };
 
     const handleChange = (field: keyof InterviewConfig, value: any) => {
         setConfig(prev => ({ ...prev, [field]: value }));
     };
 
     const goToStep = (step: number) => {
-        setDirection(step > currentStep ? "forward" : "backward");
         setCurrentStep(step);
     };
 
     const nextStep = () => {
         if (currentStep < STEPS.length) {
-            setDirection("forward");
             setCurrentStep(prev => prev + 1);
         }
     };
 
     const prevStep = () => {
         if (currentStep > 1) {
-            setDirection("backward");
             setCurrentStep(prev => prev - 1);
         }
     };
 
     const experienceValueMap: Record<number, string> = { 1: "0-1", 2: "1-3", 3: "3-5", 4: "5-10", 5: "10+" };
     const progress = (currentStep / STEPS.length) * 100;
-
-    if (showPreFlight) {
-        return (
-            <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center p-4">
-                <div className="w-full max-w-lg">
-                    <div className="bg-white rounded-3xl shadow-2xl overflow-hidden">
-                        <PreFlightAudioCheck
-                            onSuccess={handlePreFlightSuccess}
-                            successButtonLabel="Continue to Interview"
-                        />
-                    </div>
-                    <div className="text-center mt-6">
-                        <Button
-                            variant="ghost"
-                            className="text-slate-400 hover:text-white"
-                            onClick={() => setShowPreFlight(false)}
-                            disabled={isCreating}
-                        >
-                            <ArrowLeft className="w-4 h-4 mr-2" />
-                            Go Back to Setup
-                        </Button>
-                    </div>
-                </div>
-            </div>
-        );
-    }
 
     if (!mounted) {
         return null;
@@ -521,7 +487,7 @@ function CandidateStep({ config, onChange }: {
         <div className="space-y-5 sm:space-y-6 lg:space-y-8">
             <div className="space-y-1.5 sm:space-y-2">
                 <h2 className="text-xl sm:text-2xl font-bold text-slate-900">About the Candidate</h2>
-                <p className="text-sm sm:text-base text-slate-500">Tell us about who you're pretending to be.</p>
+                <p className="text-sm sm:text-base text-slate-500">Tell us about who you&apos;re pretending to be.</p>
             </div>
 
             {/* Target Position */}
@@ -707,7 +673,7 @@ function ContextStep({ config, onChange }: {
                         </TooltipTrigger>
                         <TooltipContent className="max-w-xs">
                             <p className="text-xs">
-                                <strong>Secret criteria</strong> the interviewer will evaluate but won't explicitly mention.
+                                <strong>Secret criteria</strong> the interviewer will evaluate but won&apos;t explicitly mention.
                             </p>
                         </TooltipContent>
                     </Tooltip>
@@ -751,7 +717,7 @@ function ReviewStep({ config, onGoBack }: {
                 
                 <div className="grid grid-cols-2 gap-3 sm:gap-4">
                     <ReviewItem label="Candidate" value={config.candidate_role || "—"} />
-                    <ReviewItem label="Experience" value={`${config.experience_level} years`} />
+                    <ReviewItem label="Experience" value={`${experienceValueMap[config.experience_level || 3]} years`} />
                     <ReviewItem label="Difficulty" value={`Level ${config.difficulty_level}/5`} />
                     <ReviewItem label="Mode" value={config.interview_mode || "—"} />
                     <ReviewItem label="Company" value={config.company_type || "—"} />
@@ -773,19 +739,10 @@ function ReviewStep({ config, onGoBack }: {
                 <div>
                     <p className="text-sm font-medium text-amber-800">Before you start</p>
                     <p className="text-xs sm:text-sm text-amber-700 mt-0.5">
-                        Make sure you're in a quiet environment with a working microphone. The interview will be voice-based.
+                        Make sure you&apos;re in a quiet environment with a working microphone. The interview will be voice-based.
                     </p>
                 </div>
             </div>
-
-            <Button
-                variant="outline"
-                onClick={() => onGoBack(1)}
-                className="text-slate-600 hover:text-slate-900 w-full sm:w-auto"
-            >
-                <ChevronRight className="w-4 h-4 rotate-180 mr-2" />
-                Edit Configuration
-            </Button>
         </div>
     );
 }

@@ -261,5 +261,5 @@ def delete_interview(room_name: str):
 
 
 if __name__ == "__main__":
-    port = int(os.getenv("PORT", 3001))
+    port = int(os.getenv("PORT", 3003))
     app.run(host="0.0.0.0", port=port, debug=True)

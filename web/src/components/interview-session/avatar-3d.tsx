@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
-import { useTracks } from "@livekit/components-react";
+import { useTracks, type TrackReference } from "@livekit/components-react";
 import { Track, createAudioAnalyser, isAudioTrack } from "livekit-client";
 
 // Feature flag: Set to true to use Simli avatar, false to use GLB 3D model
@@ -29,16 +29,11 @@ interface Avatar3DProps {
   isActive?: boolean;
 }
 
-export function Avatar3D({
+function Avatar3DGLB({
   modelPath = "/male.glb",
   className = "",
   isActive = true,
 }: Avatar3DProps) {
-  // If Simli is enabled, use it instead
-  if (USE_SIMLI_AVATAR && AvatarSimli) {
-    return <AvatarSimli className={className} isActive={isActive} />;
-  }
-
   const containerRef = useRef<HTMLDivElement>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -47,7 +42,6 @@ export function Avatar3D({
   const cameraRef = useRef<import("three").PerspectiveCamera | null>(null);
   const rendererRef = useRef<import("three").WebGLRenderer | null>(null);
   const headMeshRef = useRef<import("three").Mesh | null>(null);
-  const audioCtxRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animationFrameRef = useRef<number | null>(null);
 
@@ -60,7 +54,7 @@ export function Avatar3D({
   const audioAnalyserCleanupRef = useRef<(() => Promise<void>) | null>(null);
 
   // FIX #1: Use refs to stabilize track references and prevent re-renders (flickering fix)
-  const agentAudioTrackRef = useRef<typeof agentAudioTrack>(null);
+  const agentAudioTrackRef = useRef<TrackReference | null>(null);
   const agentTrackInitializedRef = useRef(false);
   
   // Subscribe to agent's microphone track for lip-sync
@@ -417,10 +411,6 @@ export function Avatar3D({
         });
       }
 
-      if (audioCtxRef.current) {
-        audioCtxRef.current.close();
-      }
-      
       // Reset initialization flag on cleanup
       agentTrackInitializedRef.current = false;
     };
@@ -458,6 +448,13 @@ export function Avatar3D({
       )}
     </div>
   );
+}
+
+export function Avatar3D(props: Avatar3DProps) {
+  if (USE_SIMLI_AVATAR && AvatarSimli) {
+    return <AvatarSimli className={props.className} isActive={props.isActive} />;
+  }
+  return <Avatar3DGLB {...props} />;
 }
 
 export default Avatar3D;

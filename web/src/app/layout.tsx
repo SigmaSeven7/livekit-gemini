@@ -4,7 +4,6 @@ import { Toaster } from "@/components/ui/toaster";
 import { Roboto } from "next/font/google";
 import { ThemeProvider } from "@/components/theme-provider";
 import { ReactQueryProvider } from "@/lib/react-query";
-import { PreFlightProvider } from "@/contexts/preflight-context";
 
 // Configure the Roboto font
 const roboto = Roboto({
@@ -38,14 +37,12 @@ export default function RootLayout({
       </head>
       <body className={roboto.className} suppressHydrationWarning>
         <ReactQueryProvider>
-            <PreFlightProvider>
-                <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
-                    <TooltipProvider>
-                        {children}
-                        <Toaster />
-                    </TooltipProvider>
-                </ThemeProvider>
-            </PreFlightProvider>
+            <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
+                <TooltipProvider>
+                    {children}
+                    <Toaster />
+                </TooltipProvider>
+            </ThemeProvider>
         </ReactQueryProvider>
       </body>
     </html>

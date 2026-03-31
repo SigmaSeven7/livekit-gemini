@@ -168,9 +168,7 @@ export function ConfigurationForm() {
       });
     }
   }, [
-    pgState.sessionConfig,
-    pgState.instructions,
-    pgState.geminiAPIKey,
+    pgState,
     localParticipant,
     toast,
     agent?.identity,

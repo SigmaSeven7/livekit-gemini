@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useRef } from "react";
+import React, { createContext, useContext, useState, useEffect } from "react";
 import {
     useMaybeRoomContext,
     useVoiceAssistant,
@@ -68,26 +68,13 @@ export function InterviewAgentProvider({ children, interviewId }: InterviewAgent
 
     // Handle transcription events - populate rawSegments only (no persistence)
     useEffect(() => {
-        if (!room) {
-            console.log("[InterviewAgentProvider] No room available yet");
-            return;
-        }
-
-        console.log("[InterviewAgentProvider] Setting up transcription listener for room:", room.name);
+        if (!room) return;
 
         const updateRawSegments = (
             segments: TranscriptionSegment[],
             participant?: Participant,
             publication?: TrackPublication,
         ) => {
-            console.log("[InterviewAgentProvider] Transcription received:", {
-                segmentCount: segments.length,
-                participantIdentity: participant?.identity,
-                participantIsAgent: participant?.isAgent,
-                trackSid: publication?.trackSid,
-                segments: segments.map(s => ({ id: s.id, text: s.text?.substring(0, 50) + '...', fromAgent: s.fromAgent }))
-            });
-
             setRawSegments((prev) => {
                 const newSegments = { ...prev };
                 for (const segment of segments) {
@@ -98,22 +85,6 @@ export function InterviewAgentProvider({ children, interviewId }: InterviewAgent
         };
 
         room.on(RoomEvent.TranscriptionReceived, updateRawSegments);
-
-        console.log("[InterviewAgentProvider] Transcription listener registered");
-
-        // Log existing participants
-        console.log("[InterviewAgentProvider] Remote participants:", 
-            Array.from(room.remoteParticipants.values()).map(p => ({
-                identity: p.identity,
-                sid: p.sid,
-                isAgent: p.isAgent,
-                tracks: Array.from(p.tracks.values()).map(t => ({
-                    sid: t.trackSid,
-                    source: t.source,
-                    muted: t.isMuted
-                }))
-            }))
-        );
 
         return () => {
             room.off(RoomEvent.TranscriptionReceived, updateRawSegments);
@@ -164,33 +135,20 @@ export function InterviewAgentProvider({ children, interviewId }: InterviewAgent
     // End interview handler - calls the API which handles fetching from agent, processing with Groq, and cleanup
     const endInterview = React.useCallback(async (): Promise<{ success: boolean; interviewId: string }> => {
         try {
-            console.log('Ending interview...');
-
-            // The API handles fetching data from agent, processing with Groq, storing in DB, and cleaning up
             const updateResponse = await fetch(`/api/interviews/${interviewId}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ status: 'completed' }),
             });
 
-            const success = updateResponse.ok;
-            if (success) {
-                console.log('Interview marked as completed and processed');
-            } else {
-                const error = await updateResponse.json();
-                console.error('Failed to update interview status:', error);
+            if (!updateResponse.ok) {
+                console.error('Failed to update interview status:', await updateResponse.json().catch(() => null));
             }
 
-            return {
-                success,
-                interviewId,
-            };
+            return { success: updateResponse.ok, interviewId };
         } catch (error) {
             console.error('Error ending interview:', error);
-            return {
-                success: false,
-                interviewId,
-            };
+            return { success: false, interviewId };
         }
     }, [interviewId]);
 

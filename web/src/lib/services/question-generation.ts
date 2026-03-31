@@ -1,11 +1,4 @@
-import { InterviewConfig } from "@/data/interview-options";
-import {
-    INTERVIEWER_ROLES,
-    INTERVIEWER_PERSONALITIES,
-    INTERVIEW_MODES,
-    COMPANY_TYPES,
-    EXPERIENCE_LEVELS
-} from "@/data/interview-options";
+import { InterviewConfig, EXPERIENCE_LEVELS } from "@/data/interview-options";
 import { QuestionBankResponse } from "@/types/question-bank";
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY;

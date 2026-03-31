@@ -4,11 +4,8 @@ import React, { useEffect, useState, useRef, useCallback } from "react";
 import {
   LiveKitRoom,
   RoomAudioRenderer,
-  BarVisualizer,
-  useTracks,
   useRoomContext,
 } from "@livekit/components-react";
-import { Track } from "livekit-client";
 import type { LocalAudioTrack } from "livekit-client";
 import dynamic from "next/dynamic";
 import { InterviewAgentProvider, useInterviewAgent } from "./interview-agent-provider";
@@ -29,7 +26,6 @@ const Avatar3D = dynamic(
         })),
     { ssr: false }
 );
-import { usePreFlightContext } from "@/contexts/preflight-context";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { PhoneOff, Mic, MicOff, Loader2, CheckCircle2, XCircle } from "lucide-react";
@@ -103,7 +99,6 @@ function Controls({ onDisconnect }: { onDisconnect: () => void }) {
     const { endInterview } = useInterviewAgent();
     const [isMuted, setIsMuted] = useState(false);
     const [endingState, setEndingState] = useState<EndingState>('idle');
-    const [savedInterviewId, setSavedInterviewId] = useState<string | null>(null);
 
     const toggleMute = () => {
         if (localParticipant) {
@@ -121,7 +116,6 @@ function Controls({ onDisconnect }: { onDisconnect: () => void }) {
             const result = await endInterview();
             
             if (result.success) {
-                setSavedInterviewId(result.interviewId);
                 setEndingState('success');
                 
                 // Disconnect from the LiveKit room — this triggers the agent's
@@ -146,7 +140,7 @@ function Controls({ onDisconnect }: { onDisconnect: () => void }) {
                 setEndingState('idle');
             }, 3000);
         }
-    }, [endInterview, endingState, onDisconnect]);
+    }, [endInterview, endingState, onDisconnect, room]);
 
     const getEndButtonContent = () => {
         switch (endingState) {
@@ -209,17 +203,7 @@ function Controls({ onDisconnect }: { onDisconnect: () => void }) {
                     </span>
                 </div>
 
-                {/* Audio Visualizer - Hidden on small mobile */}
-                <div className="hidden xs:flex flex-1 justify-center max-w-[200px] sm:max-w-[256px]">
-                    <div className="h-8 sm:h-10 w-32 sm:w-64 bg-muted/30 rounded-full px-2 sm:px-4 flex items-center overflow-hidden">
-                        <BarVisualizer
-                            state="listening"
-                            barCount={5}
-                            trackRef={useTracks([Track.Source.Microphone]).find(t => t.participant.isLocal)}
-                            className="h-4 sm:h-6 w-full"
-                        />
-                    </div>
-                </div>
+                <div className="flex-1" aria-hidden />
 
                 {/* End Button */}
                 <div className="flex items-center">
@@ -277,25 +261,16 @@ function InterviewSessionContent({ onDisconnect }: { onDisconnect: () => void })
 
 export function InterviewPage({ roomId }: { roomId: string }) {
     const router = useRouter();
-    const { takeAndClearTrack } = usePreFlightContext();
     const [configForToken, setConfigForToken] = useState<Record<string, unknown> | null>(null);
     const [token, setToken] = useState("");
     const [wsUrl, setWsUrl] = useState("");
     const [setupError, setSetupError] = useState<string | null>(null);
-    const [preFlightPassed, setPreFlightPassed] = useState(false);
     const [calibratedTrack, setCalibratedTrack] = useState<LocalAudioTrack | null>(null);
 
-    // Check for track from setup-form pre-flight (passed before navigation) — run once on mount
-    useEffect(() => {
-        const trackFromContext = takeAndClearTrack();
-        if (trackFromContext) {
-            setCalibratedTrack(trackFromContext);
-            setPreFlightPassed(true);
-        }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    // Derived: pre-flight is complete once the mic track exists
+    const preFlightPassed = calibratedTrack !== null;
 
-    // 1. Fetch interview config only (no token yet)
+    // 1. Fetch interview config (runs immediately on mount; token fetch waits for pre-flight)
     useEffect(() => {
         let cancelled = false;
 
@@ -312,11 +287,10 @@ export function InterviewPage({ roomId }: { roomId: string }) {
 
                 if (cancelled) return;
 
-                const configWithQuestions = {
+                setConfigForToken({
                     ...interview.config,
                     questions: interview.questions ?? [],
-                };
-                setConfigForToken(configWithQuestions);
+                });
             } catch (e) {
                 if (cancelled) return;
                 console.error("Interview setup failed:", e);
@@ -325,12 +299,10 @@ export function InterviewPage({ roomId }: { roomId: string }) {
         };
 
         init();
-        return () => {
-            cancelled = true;
-        };
+        return () => { cancelled = true; };
     }, [roomId]);
 
-    // 2. Fetch token only after pre-flight passes
+    // 2. Fetch LiveKit token once mic track is ready and config is loaded
     useEffect(() => {
         if (!preFlightPassed || !configForToken) return;
 
@@ -362,14 +334,11 @@ export function InterviewPage({ roomId }: { roomId: string }) {
         };
 
         fetchToken();
-        return () => {
-            cancelled = true;
-        };
+        return () => { cancelled = true; };
     }, [preFlightPassed, roomId, configForToken]);
 
     const handlePreFlightSuccess = useCallback((track: LocalAudioTrack) => {
         setCalibratedTrack(track);
-        setPreFlightPassed(true);
     }, []);
 
     if (setupError) {
@@ -405,7 +374,7 @@ export function InterviewPage({ roomId }: { roomId: string }) {
         return (
             <div className="flex flex-col items-center justify-center h-screen bg-background">
                 <div className="w-full max-w-lg rounded-2xl border border-border bg-card p-8 shadow-lg">
-                    <PreFlightAudioCheck onSuccess={handlePreFlightSuccess} roomId={roomId} />
+                    <PreFlightAudioCheck onSuccess={handlePreFlightSuccess} />
                 </div>
             </div>
         );

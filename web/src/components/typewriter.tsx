@@ -28,7 +28,7 @@ export function Typewriter({ text, speed = 10, isPaused = false, isStopped = fal
             setDisplayedText("");
             setCurrentIndex(0);
         }
-    }, [text, isStopped]); // Added isStopped dependency
+    }, [text, isStopped, displayedText]);
 
     useEffect(() => {
         if (isPaused || isStopped) {

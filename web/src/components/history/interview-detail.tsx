@@ -2,7 +2,6 @@
 
 import { useState, useMemo } from "react";
 import { DemiChat } from "./demi-chat";
-import { InterviewStatus } from "@/types/conversation";
 import { Interview } from "@/types/interview";
 import { formatDateLong } from "@/lib/utils/date";
 import { STATUS_COLORS, STATUS_LABELS } from "@/lib/constants/interview";
@@ -19,14 +18,11 @@ export function InterviewDetail({ interview }: InterviewDetailProps) {
   const formattedCreatedAt = formatDateLong(interview.createdAt);
   const formattedUpdatedAt = formatDateLong(interview.updatedAt);
 
-  // Use processedTranscript if available, otherwise fall back to transcript
-  const rawMessages = interview.processedTranscript || interview.transcript || [];
-  
-  // Concatenate messages with the same timestampStart
-  const messages = useMemo(() => 
-    concatenateMessagesWithSameStartTime(rawMessages), 
-    [rawMessages]
-  );
+  const messages = useMemo(() => {
+    const raw =
+      interview.processedTranscript || interview.transcript || [];
+    return concatenateMessagesWithSameStartTime(raw);
+  }, [interview.processedTranscript, interview.transcript]);
   
   const audioUrl = interview.audioUrl;
 

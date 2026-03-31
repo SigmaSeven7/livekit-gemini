@@ -1,15 +1,18 @@
+import path from "path";
+import dotenv from "dotenv";
+dotenv.config({ path: path.join(process.cwd(), "../.env.local") });
+
 import { AccessToken } from "livekit-server-sdk";
 import { RoomAgentDispatch, RoomConfiguration } from '@livekit/protocol';
-import dotenv from "dotenv";
-import path from "path";
-
-// Load environment variables
-dotenv.config({ path: path.join(process.cwd(), "../.env.local") });
 
 export async function POST(request: Request) {
     try {
         const body = await request.json();
         const { config, roomName } = body;
+
+        if (!roomName || typeof roomName !== "string") {
+            return Response.json({ error: "roomName is required" }, { status: 400 });
+        }
 
         const apiKey = process.env.LIVEKIT_API_KEY;
         const apiSecret = process.env.LIVEKIT_API_SECRET;

@@ -16,7 +16,7 @@ export function applySmoothingToSamples(
   samples: Float32Array,
   sampleRate: number,
   rampDurationMs: number = 40
-): Float32Array<ArrayBuffer> {
+): Float32Array {
   const rampSamples = Math.floor((rampDurationMs / 1000) * sampleRate);
   // Create a new Float32Array with a fresh ArrayBuffer to ensure type compatibility
   const result = new Float32Array(samples.length);
