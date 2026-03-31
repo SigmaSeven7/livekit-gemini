@@ -28,7 +28,8 @@ const Avatar3D = dynamic(
 );
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { PhoneOff, Mic, MicOff, Loader2, CheckCircle2, XCircle } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { PhoneOff, Mic, MicOff, Loader2, CheckCircle2, XCircle, UserRound, MessageSquare } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useLocalParticipant } from "@livekit/components-react";
 
@@ -193,7 +194,7 @@ function Controls({ onDisconnect }: { onDisconnect: () => void }) {
                         {isMuted ? <MicOff className="h-4 w-4 sm:h-5 sm:w-5" /> : <Mic className="h-4 w-4 sm:h-5 sm:w-5" />}
                     </Button>
 
-                    <span className="hidden sm:block text-xs sm:text-sm font-medium text-muted-foreground">
+                    <span className="text-[11px] sm:text-sm font-medium text-muted-foreground max-w-[4.5rem] sm:max-w-none truncate sm:whitespace-normal">
                         {endingState === 'saving'
                             ? `Saving...`
                             : isMuted
@@ -227,36 +228,108 @@ function Controls({ onDisconnect }: { onDisconnect: () => void }) {
     );
 }
 
-function InterviewSessionContent({ onDisconnect }: { onDisconnect: () => void }) {
-    return (
-        <div className="flex flex-col h-screen w-full bg-background overflow-hidden">
-            <header className="flex items-center justify-between px-4 sm:px-8 py-3 sm:py-4 border-b border-border bg-background/50 backdrop-blur-sm z-20">
-                <div className="flex items-center gap-3">
-                    <div className="relative flex h-3 w-3">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
-                    </div>
-                    <h1 className="text-sm font-bold uppercase tracking-tighter">Live Session</h1>
-                </div>
-                <div className="px-2 sm:px-3 py-1 bg-muted rounded-full text-[10px] sm:text-[11px] font-bold text-muted-foreground">
-                    LIVE
-                </div>
-            </header>
+function useInterviewLayoutIsMobile() {
+    const [isMobile, setIsMobile] = useState(
+        () => typeof window !== "undefined" && window.innerWidth < 768,
+    );
 
-            <div className="flex-1 flex overflow-hidden">
-                {/* Avatar Section - Desktop only */}
-                <div className="hidden md:flex w-1/3 min-w-[300px] max-w-[400px] border-r border-border">
+    useEffect(() => {
+        const mq = window.matchMedia("(max-width: 767px)");
+        const sync = () => setIsMobile(mq.matches);
+        sync();
+        mq.addEventListener("change", sync);
+        return () => mq.removeEventListener("change", sync);
+    }, []);
+
+    return isMobile;
+}
+
+function InterviewSessionContent({ onDisconnect }: { onDisconnect: () => void }) {
+    const isMobileLayout = useInterviewLayoutIsMobile();
+
+    const sessionHeader = (
+        <header className="flex shrink-0 items-center justify-between px-4 sm:px-8 py-3 sm:py-4 border-b border-border bg-background/50 backdrop-blur-sm z-20">
+            <div className="flex items-center gap-3 min-w-0">
+                <div className="relative flex h-3 w-3 shrink-0">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500" />
+                </div>
+                <h1 className="text-sm font-bold uppercase tracking-tighter truncate">Live Session</h1>
+            </div>
+            <div className="px-2 sm:px-3 py-1 bg-muted rounded-full text-[10px] sm:text-[11px] font-bold text-muted-foreground shrink-0">
+                LIVE
+            </div>
+        </header>
+    );
+
+    if (isMobileLayout) {
+        return (
+            <div className="flex h-[100dvh] min-h-0 w-full flex-col bg-background overflow-hidden">
+                {sessionHeader}
+
+                <Tabs defaultValue="transcript" className="flex min-h-0 flex-1 flex-col">
+                    <div className="shrink-0 border-b border-border bg-background/80 px-3 pt-2 pb-2">
+                        <TabsList
+                            className="grid h-11 w-full grid-cols-2 gap-1 rounded-xl border border-border bg-muted/50 p-1"
+                            aria-label="Interview view"
+                        >
+                            <TabsTrigger
+                                value="avatar"
+                                className="gap-2 rounded-lg data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm"
+                            >
+                                <UserRound className="h-4 w-4 shrink-0" aria-hidden />
+                                <span className="text-xs font-semibold sm:text-sm">Avatar</span>
+                            </TabsTrigger>
+                            <TabsTrigger
+                                value="transcript"
+                                className="gap-2 rounded-lg data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm"
+                            >
+                                <MessageSquare className="h-4 w-4 shrink-0" aria-hidden />
+                                <span className="text-xs font-semibold sm:text-sm">Transcript</span>
+                            </TabsTrigger>
+                        </TabsList>
+                    </div>
+
+                    <TabsContent
+                        value="avatar"
+                        className="mt-0 flex min-h-0 flex-1 flex-col overflow-hidden focus-visible:outline-none"
+                    >
+                        <div className="flex min-h-0 flex-1 items-stretch border-b border-border/50">
+                            <Avatar3D modelPath="/male.glb" className="h-full min-h-[220px] w-full" isActive={true} />
+                        </div>
+                    </TabsContent>
+
+                    <TabsContent
+                        value="transcript"
+                        className="mt-0 flex min-h-0 flex-1 flex-col overflow-hidden focus-visible:outline-none"
+                    >
+                        <Transcript />
+                    </TabsContent>
+                </Tabs>
+
+                <div className="shrink-0">
+                    <Controls onDisconnect={onDisconnect} />
+                </div>
+            </div>
+        );
+    }
+
+    return (
+        <div className="flex h-[100dvh] min-h-0 w-full flex-col bg-background overflow-hidden md:h-screen">
+            {sessionHeader}
+
+            <div className="flex min-h-0 flex-1 overflow-hidden">
+                <div className="flex w-1/3 min-w-[300px] max-w-[400px] border-r border-border">
                     <Avatar3D modelPath="/male.glb" className="h-full w-full scale-90" isActive={true} />
                 </div>
-                
-                {/* Transcript Section - Always visible */}
-                <div className="flex-1 flex flex-col">
+
+                <div className="flex min-w-0 flex-1 flex-col">
                     <Transcript />
                     <Controls onDisconnect={onDisconnect} />
                 </div>
             </div>
         </div>
-    )
+    );
 }
 
 export function InterviewPage({ roomId }: { roomId: string }) {
