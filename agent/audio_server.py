@@ -3,6 +3,7 @@ import boto3
 import sqlite3
 import time
 import threading
+from datetime import datetime, timezone
 from botocore.config import Config
 from dotenv import load_dotenv
 from flask import Flask, jsonify, request
@@ -114,6 +115,24 @@ def get_transcript_count(room_name: str) -> int:
 _AGENT_PRE_ROLL_MS = 1200.0
 # Gap to leave between the end of a candidate clip and the start of agent audio.
 _CANDIDATE_END_BUFFER_MS = 150.0
+# Trim from the end of every candidate clip to remove the silence window that
+# Gemini accumulates before firing turn_complete (≈1500ms).
+_CANDIDATE_END_TRIM_MS = 1500.0
+
+
+def _created_at_to_epoch_ms(dt_str: str) -> float:
+    """Parse a SQLite CURRENT_TIMESTAMP string (UTC, no fractional seconds) to epoch ms."""
+    if not dt_str:
+        return 0.0
+    try:
+        dt = datetime.strptime(dt_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+        return dt.timestamp() * 1000
+    except ValueError:
+        try:
+            dt = datetime.strptime(dt_str, "%Y-%m-%d %H:%M:%S.%f").replace(tzinfo=timezone.utc)
+            return dt.timestamp() * 1000
+        except ValueError:
+            return 0.0
 
 
 def get_transcripts(room_name: str):
@@ -136,15 +155,25 @@ def get_transcripts(room_name: str):
         for row in rows:
             # Parse the ID to extract the index number (format: {index}-{room_name})
             raw_id = str(row["id"])
-            # Extract the index from the beginning of the ID
             idx = raw_id.split("-")[0] if raw_id else "0"
+
+            audio_start_ms = row["audio_start_ms"] or 0.0
+            audio_end_ms = row["audio_end_ms"] or 0.0
+
+            # Compute the real wall-clock start for this segment.
+            # created_at ≈ recording_start + (audio_end_ms - POST_PADDING) in wall time,
+            # so: wall_clock_start_ms = created_at_ms − audio_end_ms + audio_start_ms
+            created_at_ms = _created_at_to_epoch_ms(row["created_at"])
+            wall_clock_start_ms = int(created_at_ms - audio_end_ms + audio_start_ms)
+
             transcripts.append({
-                "transcriptId": idx,  # Return just the index number
+                "transcriptId": idx,
                 "interviewId": room_name,
                 "participant": row["role"],
                 "transcript": row["content"],
-                "timestampStart": row["audio_start_ms"],
-                "timestampEnd": row["audio_end_ms"],
+                "timestampStart": audio_start_ms,
+                "timestampEnd": audio_end_ms,
+                "wallClockStart": wall_clock_start_ms,
                 "audioUrl": None,
                 "audioBase64": None,
             })
@@ -166,6 +195,14 @@ def get_transcripts(room_name: str):
                     if (t["timestampEnd"] or 0) > cap:
                         t["timestampEnd"] = cap
                     break
+
+        # Trim silence from the tail of every candidate clip.  Gemini's VAD fires
+        # turn_complete only after ~1500ms of silence, so that silence is included
+        # in the stored audio_end_ms; removing it gives a cleaner playback end.
+        for t in transcripts:
+            if t["participant"] == "candidate":
+                trimmed = (t["timestampEnd"] or 0) - _CANDIDATE_END_TRIM_MS
+                t["timestampEnd"] = max(t["timestampStart"] or 0, trimmed)
 
         return transcripts
 

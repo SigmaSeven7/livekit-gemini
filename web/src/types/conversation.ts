@@ -11,10 +11,12 @@ export interface ConversationMessage {
   participant: 'user' | 'agent';
   /** The transcribed text content */
   transcript: string;
-  /** Unix timestamp in milliseconds when speech started */
+  /** Recording-relative offset in milliseconds when audio clip starts (used for seeking) */
   timestampStart: number;
-  /** Unix timestamp in milliseconds when speech ended */
+  /** Recording-relative offset in milliseconds when audio clip ends (used for seeking) */
   timestampEnd: number;
+  /** Actual wall-clock Unix timestamp (ms) when this segment began — used for display */
+  wallClockStart?: number;
   /** Base64-encoded WAV audio data. Set to null after upload to storage. */
   audioBase64: string | null;
   /** URL to the stored audio file. Null until audio is uploaded. */

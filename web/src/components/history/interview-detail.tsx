@@ -23,8 +23,12 @@ export function InterviewDetail({ interview }: InterviewDetailProps) {
       interview.processedTranscript || interview.transcript || [];
     return concatenateMessagesWithSameStartTime(raw);
   }, [interview.processedTranscript, interview.transcript]);
-  
+
   const audioUrl = interview.audioUrl;
+
+  const isRtl =
+    interview.config?.interview_language === "Hebrew" ||
+    interview.config?.interview_language === "Arabic";
 
   return (
     <div className="space-y-6">
@@ -101,7 +105,7 @@ export function InterviewDetail({ interview }: InterviewDetailProps) {
             Interview Questions
             <span className="ml-2 text-sm font-normal text-slate-400">({interview.questions.length})</span>
           </h2>
-          <div className="space-y-4">
+          <div className="space-y-4" dir={isRtl ? "rtl" : "ltr"}>
             {interview.questions.map((q, idx) => (
               <div key={idx} className="border border-slate-100 rounded-xl p-4">
                 <div className="flex items-start gap-3 mb-3">
@@ -118,7 +122,7 @@ export function InterviewDetail({ interview }: InterviewDetailProps) {
                   </div>
                 </div>
                 {q.hints && q.hints.length > 0 && (
-                  <div className="ml-9 space-y-1">
+                  <div className="ms-9 space-y-1">
                     {q.hints.map((hint, hIdx) => (
                       <p key={hIdx} className="text-xs text-slate-500 flex items-start gap-1.5">
                         <span className="text-indigo-300 mt-0.5">›</span>
@@ -148,7 +152,7 @@ export function InterviewDetail({ interview }: InterviewDetailProps) {
         {showMessages && (
           <div className="mt-6 pt-6 border-t border-slate-100">
             <div className="h-[600px]">
-              <DemiChat messages={messages} audioUrl={audioUrl || undefined} />
+              <DemiChat messages={messages} audioUrl={audioUrl || undefined} isRtl={isRtl} />
             </div>
           </div>
         )}

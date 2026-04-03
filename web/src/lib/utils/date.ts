@@ -52,19 +52,24 @@ export function formatDateLong(date: Date | string): string {
 }
 
 /**
- * Format timestamp to time-only string (e.g., "2:30:45 PM")
- * Used in message timestamps
+ * Format a Unix timestamp (ms) as a locale time-of-day string, e.g. "1:47 PM".
+ * Used in message bubble timestamps.
  */
 export function formatTimeOnly(timestamp: number): string {
   const cacheKey = `time-${timestamp}`;
-  
+
   if (dateFormatCache.has(cacheKey)) {
     return dateFormatCache.get(cacheKey)!;
   }
-  
-  const date = new Date(timestamp);
-  const formatted = date.toLocaleTimeString();
-  
+
+  const formatted = new Intl.DateTimeFormat(undefined, {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(timestamp));
+
   dateFormatCache.set(cacheKey, formatted);
   return formatted;
 }

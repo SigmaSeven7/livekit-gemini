@@ -38,6 +38,12 @@ import {
 
 const SUPPORT_EMAIL = process.env.NEXT_PUBLIC_SUPPORT_EMAIL || 'support@example.com';
 
+/** Shared selectable option style (matches Interviewer Role chips) */
+const choiceBtnBase =
+    "py-3 sm:py-4 px-2 sm:px-3 rounded-xl border-2 transition-all font-medium text-xs sm:text-sm";
+const choiceBtnOn = "border-indigo-600 bg-indigo-50 text-indigo-700 shadow-md shadow-indigo-100";
+const choiceBtnOff = "border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300 hover:bg-white";
+
 const STEPS: { id: number; title: string; description: string; icon: LucideIcon }[] = [
     { id: 1, title: "Interviewer", description: "Configure your AI interviewer", icon: Bot },
     { id: 2, title: "Candidate", description: "Role & experience", icon: Users },
@@ -164,7 +170,6 @@ export function SetupForm() {
         }
     };
 
-    const experienceValueMap: Record<number, string> = { 1: "0-1", 2: "1-3", 3: "3-5", 4: "5-10", 5: "10+" };
     const progress = (currentStep / STEPS.length) * 100;
 
     if (!mounted) {
@@ -172,7 +177,7 @@ export function SetupForm() {
     }
 
     return (
-        <div className="min-h-screen w-full bg-gradient-to-br from-slate-50 via-white to-slate-100">
+        <div className="w-full bg-gradient-to-br from-slate-50 via-white to-slate-100 pt-8">
             {/* Top Progress Bar */}
             <div className="sticky top-0 z-50 bg-white/95 backdrop-blur-lg border-b border-slate-200/50">
                 <div className="max-w-5xl mx-auto px-3 sm:px-4 md:px-6 py-2 sm:py-4">
@@ -232,9 +237,9 @@ export function SetupForm() {
             </div>
 
             {/* Main Content */}
-            <div className="pt-20 sm:pt-8 lg:pt-8 pb-32 sm:pb-40 md:pb-44 px-3 sm:px-4 md:px-6">
+            <div className="pt-5 sm:pt-8 lg:pt-8 pb-20 sm:pb-40 md:pb-44 px-3 sm:px-4 md:px-6">
                 <div className="max-w-5xl mx-auto">
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
+                    <div className="flex flex-col gap-6 lg:gap-8">
                         {/* Form Area */}
                         <div className="lg:col-span-2">
                             <div 
@@ -260,7 +265,7 @@ export function SetupForm() {
                         </div>
 
                         {/* Summary Sidebar - Desktop Only */}
-                        <div className="hidden lg:block">
+                        {/* <div className="hidden lg:block">
                             <div className="sticky top-28 bg-white rounded-2xl shadow-xl shadow-slate-200/50 border border-slate-100 p-5">
                                 <h3 className="font-bold text-slate-800 text-sm mb-4 flex items-center gap-2">
                                     <Settings2 className="w-4 h-4 text-indigo-600" />
@@ -311,7 +316,7 @@ export function SetupForm() {
                                     />
                                 </div>
                             </div>
-                        </div>
+                        </div> */}
                     </div>
                 </div>
             </div>
@@ -321,10 +326,10 @@ export function SetupForm() {
                 <div className="max-w-5xl mx-auto px-3 sm:px-4 md:px-6 py-3 sm:py-4">
                     <div className="flex items-center justify-between gap-3">
                         <Button
-                            variant="ghost"
+                            variant="outline"
                             onClick={prevStep}
                             disabled={currentStep === 1}
-                            className="text-slate-600 hover:text-slate-900 px-2 sm:px-4"
+                            className="text-slate-600 hover:text-slate-900 px-2 sm:px-4 border-none !bg-transparent"
                         >
                             <ArrowLeft className="w-4 h-4 mr-1 sm:mr-2" />
                             <span className="hidden sm:inline">Back</span>
@@ -418,10 +423,8 @@ function InterviewerStep({ config, onChange }: {
                             key={role}
                             onClick={() => onChange("interviewer_role", role)}
                             className={cn(
-                                "py-3 sm:py-4 px-2 sm:px-3 rounded-xl border-2 transition-all font-medium text-xs sm:text-sm",
-                                config.interviewer_role === role
-                                    ? "border-indigo-600 bg-indigo-50 text-indigo-700 shadow-md shadow-indigo-100"
-                                    : "border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300 hover:bg-white"
+                                choiceBtnBase,
+                                config.interviewer_role === role ? choiceBtnOn : choiceBtnOff,
                             )}
                         >
                             {role}
@@ -439,13 +442,12 @@ function InterviewerStep({ config, onChange }: {
                             key={p.id}
                             onClick={() => onChange("interviewer_personality", p.id)}
                             className={cn(
-                                "p-3 sm:p-4 rounded-xl border-2 transition-all text-left",
-                                config.interviewer_personality === p.id
-                                    ? "border-purple-600 bg-purple-50 text-purple-700 shadow-md shadow-purple-100"
-                                    : "border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300 hover:bg-white"
+                                choiceBtnBase,
+                                "text-center",
+                                config.interviewer_personality === p.id ? choiceBtnOn : choiceBtnOff,
                             )}
                         >
-                            <span className="font-medium text-sm">{p.label}</span>
+                            {p.label}
                         </button>
                     ))}
                 </div>
@@ -460,16 +462,12 @@ function InterviewerStep({ config, onChange }: {
                             key={g.id}
                             onClick={() => onChange("gender_prompt", g.id)}
                             className={cn(
-                                "p-3 sm:p-4 rounded-xl border-2 transition-all text-left flex items-center justify-between",
-                                config.gender_prompt === g.id
-                                    ? "border-emerald-600 bg-emerald-50 text-emerald-700"
-                                    : "border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300 hover:bg-white"
+                                choiceBtnBase,
+                                "text-center",
+                                config.gender_prompt === g.id ? choiceBtnOn : choiceBtnOff,
                             )}
                         >
-                            <span className="text-xs sm:text-sm font-medium">{g.label}</span>
-                            {config.gender_prompt === g.id && (
-                                <Check className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-                            )}
+                            {g.label}
                         </button>
                     ))}
                 </div>
@@ -570,13 +568,12 @@ function CandidateStep({ config, onChange }: {
                             key={m.id}
                             onClick={() => onChange("interview_mode", m.id)}
                             className={cn(
-                                "p-3 sm:p-4 rounded-xl border-2 transition-all text-left",
-                                config.interview_mode === m.id
-                                    ? "border-indigo-600 bg-indigo-50 text-indigo-700"
-                                    : "border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300 hover:bg-white"
+                                choiceBtnBase,
+                                "text-center",
+                                config.interview_mode === m.id ? choiceBtnOn : choiceBtnOff,
                             )}
                         >
-                            <span className="font-medium text-sm">{m.label}</span>
+                            {m.label}
                         </button>
                     ))}
                 </div>
@@ -624,13 +621,12 @@ function ContextStep({ config, onChange }: {
                             key={t.id}
                             onClick={() => onChange("company_type", t.id)}
                             className={cn(
-                                "p-3 sm:p-4 rounded-xl border-2 transition-all text-center",
-                                config.company_type === t.id
-                                    ? "border-cyan-600 bg-cyan-50 text-cyan-700"
-                                    : "border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300 hover:bg-white"
+                                choiceBtnBase,
+                                "text-center",
+                                config.company_type === t.id ? choiceBtnOn : choiceBtnOff,
                             )}
                         >
-                            <span className="font-medium text-xs sm:text-sm">{t.label}</span>
+                            {t.label}
                         </button>
                     ))}
                 </div>
@@ -648,13 +644,12 @@ function ContextStep({ config, onChange }: {
                             key={l.id}
                             onClick={() => onChange("interview_language", l.id)}
                             className={cn(
-                                "p-3 sm:p-4 rounded-xl border-2 transition-all text-center",
-                                config.interview_language === l.id
-                                    ? "border-emerald-600 bg-emerald-50 text-emerald-700"
-                                    : "border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300 hover:bg-white"
+                                choiceBtnBase,
+                                "text-center",
+                                config.interview_language === l.id ? choiceBtnOn : choiceBtnOff,
                             )}
                         >
-                            <span className="font-medium text-xs sm:text-sm">{l.label}</span>
+                            {l.label}
                         </button>
                     ))}
                 </div>

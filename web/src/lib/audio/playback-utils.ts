@@ -11,8 +11,9 @@ import { ConversationMessage } from "@/types/conversation";
 let audioElement: HTMLAudioElement | null = null;
 let currentAudioUrl: string | null = null;
 
-// Track currently playing message to handle stopping at end time
+// Track currently playing message and clip bounds
 let playingMessageId: string | null = null;
+let currentStartTimeMs: number = 0;
 let currentEndTime: number = 0;
 let checkInterval: number | null = null;
 
@@ -31,21 +32,22 @@ function getAudioElement(): HTMLAudioElement {
 }
 
 /**
- * Plays audio from a URL, seeking to a specific start time and stopping at end time
- * @param url - The URL to fetch audio from
+ * Plays audio from a URL, seeking to a specific start time and stopping at end time.
+ * @param url        - The URL to fetch audio from
  * @param startTimeMs - Start time in milliseconds
- * @param endTimeMs - End time in milliseconds (optional, plays to end if not provided)
- * @param messageId - Unique identifier for the message being played
+ * @param endTimeMs  - End time in milliseconds (optional, plays to end if not provided)
+ * @param messageId  - Unique identifier for the message being played
+ * @param rate       - Playback speed (0.5–2, default 1)
  */
 export async function playAudioFromUrlWithTimestamp(
   url: string,
   startTimeMs: number,
   endTimeMs?: number,
-  messageId?: string
+  messageId?: string,
+  rate: number = 1,
 ): Promise<void> {
   const audio = getAudioElement();
-  
-  // If same URL and already loaded, just seek
+
   if (currentAudioUrl !== url) {
     audio.src = url;
     currentAudioUrl = url;
@@ -53,55 +55,69 @@ export async function playAudioFromUrlWithTimestamp(
   } else if (audio.paused) {
     await audio.play();
   }
-  
-  // Seek to start time (convert ms to seconds)
+
   audio.currentTime = startTimeMs / 1000;
-  
-  // Set up stopping at end time if provided
+  audio.playbackRate = Math.max(0.5, Math.min(2, rate));
+
   if (endTimeMs !== undefined && messageId) {
     playingMessageId = messageId;
+    currentStartTimeMs = startTimeMs;
     currentEndTime = endTimeMs;
-    
-    // Clear any existing interval
-    if (checkInterval) {
-      clearInterval(checkInterval);
-    }
-    
-    // Check periodically if we've reached the end time
+
+    if (checkInterval) clearInterval(checkInterval);
+
     checkInterval = window.setInterval(() => {
       if (playingMessageId === messageId) {
-        const currentTimeMs = audio.currentTime * 1000;
-        if (currentTimeMs >= currentEndTime) {
+        if (audio.currentTime * 1000 >= currentEndTime) {
           audio.pause();
           playingMessageId = null;
-          if (checkInterval) {
-            clearInterval(checkInterval);
-            checkInterval = null;
-          }
+          if (checkInterval) { clearInterval(checkInterval); checkInterval = null; }
         }
       }
     }, 100);
   }
-  
+
   return new Promise((resolve, reject) => {
     audio.onended = () => {
       playingMessageId = null;
-      if (checkInterval) {
-        clearInterval(checkInterval);
-        checkInterval = null;
-      }
+      if (checkInterval) { clearInterval(checkInterval); checkInterval = null; }
       resolve();
     };
     audio.onerror = (error) => {
       playingMessageId = null;
-      if (checkInterval) {
-        clearInterval(checkInterval);
-        checkInterval = null;
-      }
+      if (checkInterval) { clearInterval(checkInterval); checkInterval = null; }
       console.error('Failed to play audio:', error);
       reject(error);
     };
   });
+}
+
+/**
+ * Returns the current playback position within the active clip, or null if nothing is playing.
+ */
+export function getPlaybackProgress(): { currentMs: number; startMs: number; endMs: number } | null {
+  if (!audioElement || !playingMessageId) return null;
+  return {
+    currentMs: audioElement.currentTime * 1000,
+    startMs: currentStartTimeMs,
+    endMs: currentEndTime,
+  };
+}
+
+/**
+ * Seeks to a fractional position (0–1) within the currently playing clip.
+ */
+export function seekToFraction(fraction: number): void {
+  if (!audioElement || !playingMessageId) return;
+  const f = Math.max(0, Math.min(1, fraction));
+  audioElement.currentTime = (currentStartTimeMs + (currentEndTime - currentStartTimeMs) * f) / 1000;
+}
+
+/**
+ * Changes the playback rate of the currently loaded audio element (0.5–2).
+ */
+export function setPlaybackRate(rate: number): void {
+  if (audioElement) audioElement.playbackRate = Math.max(0.5, Math.min(2, rate));
 }
 
 /**

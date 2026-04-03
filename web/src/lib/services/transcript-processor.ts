@@ -14,6 +14,7 @@ export interface RawTranscriptSegment {
     transcript: string;
     timestampStart: number;
     timestampEnd: number;
+    wallClockStart?: number;
     audioUrl: string | null;
 }
 
@@ -33,6 +34,7 @@ export async function processTranscriptsWithGroq(
             transcript: t.transcript,
             timestampStart: t.timestampStart,
             timestampEnd: t.timestampEnd,
+            wallClockStart: t.wallClockStart,
             audioUrl: t.audioUrl,
             audioBase64: null,
         }));
@@ -135,6 +137,7 @@ Return the same JSON object with the keys unchanged and only the values (transcr
                 transcript: cleanedText,
                 timestampStart: t.timestampStart,
                 timestampEnd: t.timestampEnd,
+                wallClockStart: t.wallClockStart,
                 audioUrl: t.audioUrl,
                 audioBase64: null,
             };
@@ -142,7 +145,6 @@ Return the same JSON object with the keys unchanged and only the values (transcr
 
     } catch (error) {
         console.error("Transcript processing failed:", error);
-        // Fall back to returning original transcripts with basic mapping
         return transcripts.map(t => ({
             transcriptId: String(t.transcriptId),
             interviewId: t.interviewId,
@@ -150,6 +152,7 @@ Return the same JSON object with the keys unchanged and only the values (transcr
             transcript: t.transcript,
             timestampStart: t.timestampStart,
             timestampEnd: t.timestampEnd,
+            wallClockStart: t.wallClockStart,
             audioUrl: t.audioUrl,
             audioBase64: null,
         }));

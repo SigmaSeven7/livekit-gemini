@@ -33,33 +33,11 @@ export default function Page() {
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col items-center justify-center px-4 py-8">
+      <main className="flex-1 flex flex-col items-center justify-start px-4 py-8">
       <SetupForm />
       </main>
 
-      {/* Friendly Footer */}
-      <footer className="py-8 border-t border-sky-200/50 text-center text-xs text-gray-500 font-light">
-        <div className="flex items-center justify-center gap-2 mb-3">
-          <span>Made with</span>
-          <Heart className="w-3 h-3 text-red-400" />
-          <span>using</span>
-          <a 
-            href="https://livekit.io" 
-            className="text-gray-600 hover:text-gray-800 transition-colors"
-          >
-            LiveKit Agents
-          </a>
-        </div>
-        <a
-          href="https://github.com/livekit-examples/gemini-playground"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-1.5 text-gray-500 hover:text-gray-700 transition-colors"
-        >
-          <GitHubLogoIcon className="w-3.5 h-3.5" />
-          <span>View Source</span>
-        </a>
-      </footer>
+  
     </div>
   );
 }
