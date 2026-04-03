@@ -94,6 +94,8 @@ export interface UseSpeechCoachingAnalysisOptions {
     pauseWhenHidden: boolean;
     /** Matches `InterviewConfig.interview_language` — steers model output language */
     interviewLanguage: string;
+    /** Called at flush time — interview question + config snapshot (bounded string) */
+    getCoachingContext: () => string;
     onEntry: (entry: Omit<SpeechCoachingEntry, "id" | "at">) => void;
 }
 
@@ -104,6 +106,7 @@ export function useSpeechCoachingAnalysis({
     pauseWhenAssistantSpeaking,
     pauseWhenHidden,
     interviewLanguage,
+    getCoachingContext,
     onEntry,
 }: UseSpeechCoachingAnalysisOptions): {
     isAnalyzing: boolean;
@@ -135,6 +138,8 @@ export function useSpeechCoachingAnalysis({
     pauseWhenHiddenRef.current = pauseWhenHidden;
     const interviewLanguageRef = useRef(interviewLanguage);
     interviewLanguageRef.current = interviewLanguage;
+    const getCoachingContextRef = useRef(getCoachingContext);
+    getCoachingContextRef.current = getCoachingContext;
 
     useEffect(() => {
         mountedRef.current = true;
@@ -188,6 +193,10 @@ export function useSpeechCoachingAnalysis({
             const form = new FormData();
             form.append("audio", new Blob([wav], { type: "audio/wav" }), "clip.wav");
             form.append("interview_language", interviewLanguageRef.current.trim() || "English");
+            const ctx = getCoachingContextRef.current().trim();
+            if (ctx) {
+                form.append("coaching_context", ctx);
+            }
 
             const res = await fetch("/api/speech-coaching/analyze", {
                 method: "POST",

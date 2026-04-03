@@ -10,6 +10,7 @@ export interface CoachingDataParsed {
     live_toast?: string;
     metrics?: CoachingMetrics;
     emotions?: { scores?: Record<string, number> };
+    /** One-sentence coaching insight — not a transcript recap */
     internal_summary?: string;
     error?: string;
     raw?: string;

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useRef, useCallback } from "react";
+import React, { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import {
   LiveKitRoom,
   RoomAudioRenderer,
@@ -28,6 +28,7 @@ const Avatar3D = dynamic(
     { ssr: false }
 );
 import type { InterviewLanguage } from "@/data/interview-options";
+import type { CoachingSessionStaticContext } from "@/lib/speech-coaching-context";
 import { getSpeechCoachingUiStrings, isSpeechCoachingRtl } from "@/lib/speech-coaching-ui";
 import { cn } from "@/lib/utils";
 
@@ -532,6 +533,33 @@ function InterviewSessionContent({ onDisconnect }: { onDisconnect: () => void })
     );
 }
 
+function coachingSessionStaticFromConfig(
+    config: Record<string, unknown> | null,
+): CoachingSessionStaticContext | undefined {
+    if (!config) return undefined;
+    const role = typeof config.candidate_role === "string" ? config.candidate_role : undefined;
+    const jd = typeof config.job_description === "string" ? config.job_description : undefined;
+    const rawQs = config.questions;
+    let planned: string[] = [];
+    if (Array.isArray(rawQs)) {
+        planned = rawQs
+            .map((item) => {
+                if (item && typeof item === "object" && item !== null && "question" in item) {
+                    return String((item as { question: unknown }).question ?? "");
+                }
+                return "";
+            })
+            .filter((s) => s.length > 0);
+    }
+    const hasAny = role || jd || planned.length > 0;
+    if (!hasAny) return undefined;
+    return {
+        candidateRole: role,
+        jobDescriptionSnippet: jd ? jd.slice(0, 600) : undefined,
+        plannedQuestionsPreview: planned.length > 0 ? planned : undefined,
+    };
+}
+
 export function InterviewPage({ roomId }: { roomId: string }) {
     const router = useRouter();
     const [configForToken, setConfigForToken] = useState<Record<string, unknown> | null>(null);
@@ -614,6 +642,11 @@ export function InterviewPage({ roomId }: { roomId: string }) {
         setCalibratedTrack(track);
     }, []);
 
+    const coachingSessionStatic = useMemo(
+        () => coachingSessionStaticFromConfig(configForToken),
+        [configForToken],
+    );
+
     if (setupError) {
         return (
             <div className="flex flex-col items-center justify-center h-screen bg-background gap-4">
@@ -679,6 +712,7 @@ export function InterviewPage({ roomId }: { roomId: string }) {
                 interviewId={roomId}
                 calibratedTrack={calibratedTrack}
                 interviewLanguage={interviewLanguageFromConfig(configForToken)}
+                coachingSessionStatic={coachingSessionStatic}
             >
                 <PreFlightTrackPublisher calibratedTrack={calibratedTrack} />
                 <div className="h-full w-full flex items-center justify-center">

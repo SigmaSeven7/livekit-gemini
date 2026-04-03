@@ -46,13 +46,21 @@ const EMOTION_DIMENSIONS = [
     "Worry",
 ] as const;
 
-const COACHING_SYSTEM_PROMPT = `You are a Real-Time Interview Coach. 
-Analyze the audio clip's acoustic features and return a concise JSON audit.
+const COACHING_SYSTEM_PROMPT = `You are a Real-Time Interview Coach focused on **how** the candidate speaks, not on repeating what they said.
 
-### LIVE FEEDBACK GOAL:
-Provide a "live_toast" message (max 10 words) for immediate display to the user.
+### DO NOT
+- Transcribe, summarize, or quote the candidate's words.
+- Copy long phrases from the interview context into your outputs.
+- Answer the interview question yourself.
 
-### OUTPUT STRUCTURE:
+### DO
+- Judge **delivery**: confidence, clarity, pacing, emotional tone, relevance to the interview context when provided.
+- Give **actionable** feedback: what to adjust in the next 30–60 seconds of speaking.
+
+### LIVE FEEDBACK
+- "live_toast": max 10 words, **one concrete tip** (e.g. slow down, breathe, structure first—then detail). Not a recap.
+
+### OUTPUT STRUCTURE (JSON only)
 {
   "live_toast": string,
   "metrics": {
@@ -63,10 +71,13 @@ Provide a "live_toast" message (max 10 words) for immediate display to the user.
   "emotions": {
     "scores": { "EmotionName": float (0.0 to 1.0) }
   },
-  "internal_summary": string (1-sentence summary of behavior for aggregation)
+  "internal_summary": string
 }
 
-### EMOTION LIST (MANDATORY):
+### internal_summary
+One sentence: **coaching insight** (strength or improvement tied to interview performance)—not a summary of content.
+
+### EMOTION LIST (MANDATORY keys in scores)
 ${EMOTION_DIMENSIONS.join(", ")}
 `;
 
@@ -97,24 +108,48 @@ function parseCoachingContent(raw: string): CoachingDataParsed {
     }
 }
 
+type MultimodalUserPart =
+    | { type: "text"; text: string }
+    | { type: "input_audio"; input_audio: { data: string; format: "wav" } };
+
+function buildUserContent(
+    b64Audio: string,
+    options?: { coachingContext?: string },
+): MultimodalUserPart[] {
+    const parts: MultimodalUserPart[] = [{ type: "text", text: SPEECH_COACHING_USER_TEXT }];
+    const ctx = options?.coachingContext?.trim();
+    if (ctx) {
+        parts.push({
+            type: "text",
+            text: `Interview context (use for relevance only; do not paste into outputs):\n${ctx}`,
+        });
+    }
+    parts.push({
+        type: "input_audio",
+        input_audio: { data: b64Audio, format: "wav" },
+    });
+    return parts;
+}
+
+export type AnalyzeCoachingOptions = {
+    responseLanguage?: string;
+    coachingContext?: string;
+};
+
 export async function analyzeCoachingWavBytes(
     wavBytes: Buffer,
     apiKey: string,
     model?: string,
-    options?: { responseLanguage?: string },
+    options?: AnalyzeCoachingOptions,
 ): Promise<SpeechCoachingAnalyzeResponse> {
     const m = model ?? process.env.OPENROUTER_COACHING_MODEL ?? DEFAULT_COACHING_MODEL;
     const responseLanguage = options?.responseLanguage?.trim() || "English";
     const systemContent = coachingSystemPromptWithResponseLanguage(responseLanguage);
     const b64 = wavBytes.toString("base64");
 
-    const userContent = [
-        { type: "text", text: SPEECH_COACHING_USER_TEXT },
-        {
-            type: "input_audio",
-            input_audio: { data: b64, format: "wav" },
-        },
-    ];
+    const userContent = buildUserContent(b64, {
+        coachingContext: options?.coachingContext,
+    });
 
     const controller = new AbortController();
     const timeoutMs = openRouterCoachingFetchTimeoutMs();

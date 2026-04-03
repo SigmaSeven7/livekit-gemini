@@ -14,6 +14,10 @@ import {
     RemoteParticipant,
     type ByteStreamReader,
 } from "livekit-client";
+import {
+    buildSpeechCoachingContextString,
+    type CoachingSessionStaticContext,
+} from "@/lib/speech-coaching-context";
 import { useSpeechCoachingAnalysis } from "@/hooks/use-speech-coaching-analysis";
 import type { InterviewLanguage } from "@/data/interview-options";
 import type { CoachingDataParsed, SpeechCoachingEntry } from "@/types/speech-coaching";
@@ -60,6 +64,8 @@ interface InterviewAgentProviderProps {
     calibratedTrack?: LocalAudioTrack | null;
     /** From interview config — speech coach model + panel copy */
     interviewLanguage?: InterviewLanguage;
+    /** Role, job excerpt, planned questions — combined with live transcript in coaching API */
+    coachingSessionStatic?: CoachingSessionStaticContext;
 }
 
 export function InterviewAgentProvider({
@@ -67,6 +73,7 @@ export function InterviewAgentProvider({
     interviewId,
     calibratedTrack = null,
     interviewLanguage = "English",
+    coachingSessionStatic,
 }: InterviewAgentProviderProps) {
     const room = useMaybeRoomContext();
     const { agent, state } = useVoiceAssistant();
@@ -91,6 +98,16 @@ export function InterviewAgentProvider({
     const clientEnabled = COACHING_SOURCE === "client";
     const mediaStreamTrack = calibratedTrack?.mediaStreamTrack ?? null;
 
+    const lastAgentMessage = useMemo(() => {
+        const agentOnly = displayTranscriptions.filter((t) => t.participant?.isAgent);
+        const last = agentOnly[agentOnly.length - 1];
+        return last?.segment.text?.trim() ?? "";
+    }, [displayTranscriptions]);
+
+    const getCoachingContext = useCallback(() => {
+        return buildSpeechCoachingContextString(coachingSessionStatic, lastAgentMessage);
+    }, [coachingSessionStatic, lastAgentMessage]);
+
     const speechCoachingClientState = useSpeechCoachingAnalysis({
         enabled: clientEnabled,
         mediaStreamTrack,
@@ -98,6 +115,7 @@ export function InterviewAgentProvider({
         pauseWhenAssistantSpeaking: true,
         pauseWhenHidden: true,
         interviewLanguage,
+        getCoachingContext,
         onEntry: pushCoachingEntry,
     });
 

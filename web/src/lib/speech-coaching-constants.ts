@@ -26,5 +26,9 @@ export const SPEECH_COACHING_LLM = {
     TEMPERATURE: 0.2,
 } as const;
 
-/** User text part of the multimodal message (same intent as Python `analyze_coaching_audio`) */
-export const SPEECH_COACHING_USER_TEXT = "Quick audit: live feedback and full emotion scores.";
+/**
+ * Opening user text before optional interview context + audio.
+ * Deeper behavioral rules live in `speech-coaching-openrouter.ts` system prompt.
+ */
+export const SPEECH_COACHING_USER_TEXT =
+    "Analyze this audio clip for interview delivery. Return the required JSON with scores and actionable coaching (not a transcript).";

@@ -3,6 +3,7 @@ import dotenv from "dotenv";
 
 dotenv.config({ path: path.join(process.cwd(), "../.env.local") });
 
+import { SPEECH_COACHING_CONTEXT_MAX_CHARS } from "@/lib/speech-coaching-context";
 import { analyzeCoachingWavBytes } from "@/server/speech-coaching-openrouter";
 
 export const runtime = "nodejs";
@@ -70,6 +71,7 @@ export async function POST(request: Request) {
     }
 
     let wav: Buffer;
+    let coachingContext: string | undefined;
 
     const ct = request.headers.get("content-type") ?? "";
     let responseLanguage = "English";
@@ -79,6 +81,10 @@ export async function POST(request: Request) {
         const langField = form.get("interview_language");
         if (typeof langField === "string" && langField.trim()) {
             responseLanguage = langField.trim();
+        }
+        const ctxField = form.get("coaching_context");
+        if (typeof ctxField === "string" && ctxField.trim()) {
+            coachingContext = ctxField.trim().slice(0, SPEECH_COACHING_CONTEXT_MAX_CHARS);
         }
         if (!file || typeof file === "string") {
             return Response.json({ status: "error", message: "Missing audio file (field: audio or file)" }, { status: 400 });
@@ -107,7 +113,10 @@ export async function POST(request: Request) {
         return Response.json({ status: "error", message: "Invalid or empty WAV" }, { status: 400 });
     }
 
-    const result = await analyzeCoachingWavBytes(wav, apiKey, undefined, { responseLanguage });
+    const result = await analyzeCoachingWavBytes(wav, apiKey, undefined, {
+        responseLanguage,
+        coachingContext,
+    });
     if (result.status === "error") {
         return Response.json(result, { status: 502 });
     }
