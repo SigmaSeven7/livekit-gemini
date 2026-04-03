@@ -27,7 +27,17 @@ const Avatar3D = dynamic(
         })),
     { ssr: false }
 );
+import type { InterviewLanguage } from "@/data/interview-options";
+import { getSpeechCoachingUiStrings, isSpeechCoachingRtl } from "@/lib/speech-coaching-ui";
 import { cn } from "@/lib/utils";
+
+function interviewLanguageFromConfig(config: Record<string, unknown> | null): InterviewLanguage {
+    const v = config?.interview_language;
+    if (v === "English" || v === "Hebrew" || v === "Russian" || v === "Arabic") {
+        return v;
+    }
+    return "English";
+}
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PhoneOff, Mic, MicOff, Loader2, CheckCircle2, XCircle, UserRound, MessageSquare, ChevronDown, Sparkles } from "lucide-react";
@@ -43,9 +53,11 @@ function topEmotionScores(scores: Record<string, number> | undefined, n: number)
 }
 
 function SpeechCoachingPanel() {
-    const { speechCoachingFeed, speechCoachingClient, coachingSource } = useInterviewAgent();
+    const { speechCoachingFeed, speechCoachingClient, coachingSource, interviewLanguage } = useInterviewAgent();
     const [open, setOpen] = useState(true);
     const latest = speechCoachingFeed[speechCoachingFeed.length - 1];
+    const ui = getSpeechCoachingUiStrings(interviewLanguage);
+    const rtl = isSpeechCoachingRtl(interviewLanguage);
 
     const liveLine = latest
         ? (latest.toast?.trim() ||
@@ -58,14 +70,17 @@ function SpeechCoachingPanel() {
         const line = latest.toast?.trim() || latest.data?.live_toast?.trim();
         if (!line) return;
         toast({
-            title: "Live feedback",
+            title: ui.toastTitle,
             description: line,
             duration: 3500,
         });
-    }, [latest]);
+    }, [latest, ui.toastTitle]);
 
     return (
-        <div className="shrink-0 border-b border-border bg-muted/15 px-3 sm:px-5 py-2 sm:py-3">
+        <div
+            dir={rtl ? "rtl" : "ltr"}
+            className="shrink-0 border-b border-border bg-muted/15 px-3 sm:px-5 py-2 sm:py-3"
+        >
             <button
                 type="button"
                 onClick={() => setOpen(!open)}
@@ -73,7 +88,7 @@ function SpeechCoachingPanel() {
             >
                 <span className="flex items-center gap-2 min-w-0">
                     <Sparkles className="h-3.5 w-3.5 shrink-0 text-amber-500" aria-hidden />
-                    <span className="truncate">Live feedback</span>
+                    <span className="truncate">{ui.panelTitle}</span>
                     {speechCoachingClient?.isAnalyzing && (
                         <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" aria-hidden />
                     )}
@@ -87,9 +102,7 @@ function SpeechCoachingPanel() {
                 <div className="mt-3 space-y-3 text-sm">
                     {!latest ? (
                         <p className="text-xs text-muted-foreground leading-relaxed">
-                            {coachingSource === "client"
-                                ? "Coaching runs after at least ~20 seconds of speech, once you pause (~1.5s) at the end of a thought—up to 2 minutes per clip. A cooldown applies between analyses. Keep the tab visible for best results."
-                                : "When speech coaching is enabled on the agent, concise tips based on your audio appear here."}
+                            {coachingSource === "client" ? ui.emptyClient : ui.emptyAgent}
                         </p>
                     ) : latest.error ? (
                         <p className="text-xs text-destructive leading-relaxed">{latest.error}</p>
@@ -98,7 +111,7 @@ function SpeechCoachingPanel() {
                             {liveLine && (
                                 <div>
                                     <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-1">
-                                        Now
+                                        {ui.now}
                                     </p>
                                     <p className="text-foreground/95 text-sm font-medium leading-relaxed">{liveLine}</p>
                                 </div>
@@ -109,7 +122,7 @@ function SpeechCoachingPanel() {
                                     {typeof latest.data.metrics.confidence === "number" && (
                                         <div>
                                             <p className="text-[10px] font-bold uppercase text-muted-foreground">
-                                                Confidence
+                                                {ui.confidence}
                                             </p>
                                             <p className="text-foreground/90">
                                                 {(latest.data.metrics.confidence * 100).toFixed(0)}%
@@ -119,7 +132,7 @@ function SpeechCoachingPanel() {
                                     {typeof latest.data.metrics.clarity === "number" && (
                                         <div>
                                             <p className="text-[10px] font-bold uppercase text-muted-foreground">
-                                                Clarity
+                                                {ui.clarity}
                                             </p>
                                             <p className="text-foreground/90">
                                                 {(latest.data.metrics.clarity * 100).toFixed(0)}%
@@ -129,7 +142,7 @@ function SpeechCoachingPanel() {
                                     {latest.data.metrics.pacing && (
                                         <div className="col-span-2">
                                             <p className="text-[10px] font-bold uppercase text-muted-foreground">
-                                                Pacing
+                                                {ui.pacing}
                                             </p>
                                             <p className="text-foreground/90 capitalize">
                                                 {latest.data.metrics.pacing}
@@ -142,7 +155,7 @@ function SpeechCoachingPanel() {
                             {topEmotionScores(latest.data?.emotions?.scores, 4).length > 0 && (
                                 <div>
                                     <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-1">
-                                        Emotions
+                                        {ui.emotions}
                                     </p>
                                     <p className="text-xs text-foreground/85 leading-relaxed">
                                         {topEmotionScores(latest.data?.emotions?.scores, 4).join(" · ")}
@@ -153,7 +166,7 @@ function SpeechCoachingPanel() {
                             {latest.data?.internal_summary && (
                                 <div>
                                     <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-1">
-                                        Summary
+                                        {ui.summary}
                                     </p>
                                     <p className="text-xs text-foreground/85 leading-relaxed">
                                         {latest.data.internal_summary}
@@ -165,7 +178,7 @@ function SpeechCoachingPanel() {
                                 <>
                                     <div>
                                         <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-1">
-                                            Tone
+                                            {ui.tone}
                                         </p>
                                         <p className="text-foreground/90 text-sm leading-relaxed">
                                             {latest.coaching.tone}
@@ -173,7 +186,7 @@ function SpeechCoachingPanel() {
                                     </div>
                                     <div>
                                         <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-1">
-                                            Vocabulary
+                                            {ui.vocabulary}
                                         </p>
                                         <p className="text-foreground/90 text-sm leading-relaxed">
                                             {latest.coaching.vocabulary}
@@ -181,7 +194,7 @@ function SpeechCoachingPanel() {
                                     </div>
                                     <div>
                                         <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-1">
-                                            Clarity
+                                            {ui.clarity}
                                         </p>
                                         <p className="text-foreground/90 text-sm leading-relaxed">
                                             {latest.coaching.clarity}
@@ -190,7 +203,7 @@ function SpeechCoachingPanel() {
                                     {latest.coaching.suggestions?.length > 0 && (
                                         <div>
                                             <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-1">
-                                                Suggestions
+                                                {ui.suggestions}
                                             </p>
                                             <ul className="list-disc pl-4 space-y-1 text-sm text-foreground/90">
                                                 {latest.coaching.suggestions.map((s) => (
@@ -204,7 +217,7 @@ function SpeechCoachingPanel() {
 
                             {latest.model && (
                                 <p className="text-[10px] text-muted-foreground/80 pt-1 border-t border-border/50">
-                                    Model: {latest.model}
+                                    {ui.modelLabel}: {latest.model}
                                 </p>
                             )}
                         </div>
@@ -662,7 +675,11 @@ export function InterviewPage({ roomId }: { roomId: string }) {
             audio={false}
             className="h-screen w-full bg-background"
         >
-            <InterviewAgentProvider interviewId={roomId} calibratedTrack={calibratedTrack}>
+            <InterviewAgentProvider
+                interviewId={roomId}
+                calibratedTrack={calibratedTrack}
+                interviewLanguage={interviewLanguageFromConfig(configForToken)}
+            >
                 <PreFlightTrackPublisher calibratedTrack={calibratedTrack} />
                 <div className="h-full w-full flex items-center justify-center">
                     <div className="w-full h-full shadow-2xl md:border-x border-border">

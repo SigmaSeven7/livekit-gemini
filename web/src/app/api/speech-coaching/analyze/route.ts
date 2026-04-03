@@ -72,9 +72,14 @@ export async function POST(request: Request) {
     let wav: Buffer;
 
     const ct = request.headers.get("content-type") ?? "";
+    let responseLanguage = "English";
     if (ct.includes("multipart/form-data")) {
         const form = await request.formData();
         const file = form.get("audio") ?? form.get("file");
+        const langField = form.get("interview_language");
+        if (typeof langField === "string" && langField.trim()) {
+            responseLanguage = langField.trim();
+        }
         if (!file || typeof file === "string") {
             return Response.json({ status: "error", message: "Missing audio file (field: audio or file)" }, { status: 400 });
         }
@@ -102,7 +107,7 @@ export async function POST(request: Request) {
         return Response.json({ status: "error", message: "Invalid or empty WAV" }, { status: 400 });
     }
 
-    const result = await analyzeCoachingWavBytes(wav, apiKey);
+    const result = await analyzeCoachingWavBytes(wav, apiKey, undefined, { responseLanguage });
     if (result.status === "error") {
         return Response.json(result, { status: 502 });
     }

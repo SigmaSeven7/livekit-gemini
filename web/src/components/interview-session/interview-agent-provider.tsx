@@ -15,6 +15,7 @@ import {
     type ByteStreamReader,
 } from "livekit-client";
 import { useSpeechCoachingAnalysis } from "@/hooks/use-speech-coaching-analysis";
+import type { InterviewLanguage } from "@/data/interview-options";
 import type { CoachingDataParsed, SpeechCoachingEntry } from "@/types/speech-coaching";
 
 interface Transcription {
@@ -42,6 +43,8 @@ interface AgentContextType {
         error: string | null;
         lastAnalyzedAt: number | null;
     } | null;
+    /** Interview language from setup — drives speech coaching UI + API */
+    interviewLanguage: InterviewLanguage;
 
     // End interview handler
     endInterview: () => Promise<{ success: boolean; interviewId: string }>;
@@ -55,12 +58,15 @@ interface InterviewAgentProviderProps {
     interviewId: string;
     /** Calibrated mic track from pre-flight (same track published to LiveKit). Used for client-side coaching. */
     calibratedTrack?: LocalAudioTrack | null;
+    /** From interview config — speech coach model + panel copy */
+    interviewLanguage?: InterviewLanguage;
 }
 
 export function InterviewAgentProvider({
     children,
     interviewId,
     calibratedTrack = null,
+    interviewLanguage = "English",
 }: InterviewAgentProviderProps) {
     const room = useMaybeRoomContext();
     const { agent, state } = useVoiceAssistant();
@@ -91,6 +97,7 @@ export function InterviewAgentProvider({
         assistantState: state,
         pauseWhenAssistantSpeaking: true,
         pauseWhenHidden: true,
+        interviewLanguage,
         onEntry: pushCoachingEntry,
     });
 
@@ -276,6 +283,7 @@ export function InterviewAgentProvider({
                 speechCoachingFeed,
                 coachingSource: COACHING_SOURCE,
                 speechCoachingClient,
+                interviewLanguage,
                 endInterview,
             }}
         >

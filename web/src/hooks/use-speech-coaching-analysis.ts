@@ -1,16 +1,24 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { SPEECH_COACHING_CAPTURE } from "@/lib/speech-coaching-constants";
+import {
+    appendFloatChunk,
+    clearFloatChunkBuffer,
+    createEmptyChunkBuffer,
+    takeFirstSamples,
+    type FloatChunkBuffer,
+} from "@/lib/speech-coaching-chunk-buffer";
 import { buildWavFromMonoPcm16, float32ToPcm16Mono } from "@/lib/speech-coaching-audio";
 import type { SpeechCoachingAnalyzeResponse, SpeechCoachingEntry } from "@/types/speech-coaching";
 
-const MIN_CLIP_SEC = 20;
-const MAX_CLIP_SEC = 120;
-const COOLDOWN_MS = 45_000;
-/** Trailing silence (~end of sentence) before we analyze; avoids cutting mid-utterance */
-const SILENCE_END_UTTERANCE_MS = 1500;
-/** RMS threshold on float32 mono [-1,1] — below = quiet / pause */
-const SPEECH_RMS_THRESHOLD = 0.018;
+const {
+    MIN_CLIP_SEC,
+    MAX_CLIP_SEC,
+    COOLDOWN_MS,
+    SILENCE_END_UTTERANCE_MS,
+    SPEECH_RMS_THRESHOLD,
+} = SPEECH_COACHING_CAPTURE;
 
 function rmsMono(samples: Float32Array): number {
     if (samples.length === 0) return 0;
@@ -20,18 +28,6 @@ function rmsMono(samples: Float32Array): number {
         sum += x * x;
     }
     return Math.sqrt(sum / samples.length);
-}
-
-function appendFloat32(a: Float32Array, b: Float32Array): Float32Array {
-    const out = new Float32Array(a.length + b.length);
-    out.set(a, 0);
-    out.set(b, a.length);
-    return out;
-}
-
-function sliceOffFront(buffer: Float32Array, count: number): Float32Array {
-    if (count >= buffer.length) return new Float32Array(0);
-    return buffer.slice(count);
 }
 
 /**
@@ -96,6 +92,8 @@ export interface UseSpeechCoachingAnalysisOptions {
         | "speaking";
     pauseWhenAssistantSpeaking: boolean;
     pauseWhenHidden: boolean;
+    /** Matches `InterviewConfig.interview_language` — steers model output language */
+    interviewLanguage: string;
     onEntry: (entry: Omit<SpeechCoachingEntry, "id" | "at">) => void;
 }
 
@@ -105,6 +103,7 @@ export function useSpeechCoachingAnalysis({
     assistantState,
     pauseWhenAssistantSpeaking,
     pauseWhenHidden,
+    interviewLanguage,
     onEntry,
 }: UseSpeechCoachingAnalysisOptions): {
     isAnalyzing: boolean;
@@ -115,13 +114,15 @@ export function useSpeechCoachingAnalysis({
     const [error, setError] = useState<string | null>(null);
     const [lastAnalyzedAt, setLastAnalyzedAt] = useState<number | null>(null);
 
-    const bufferRef = useRef<Float32Array>(new Float32Array(0));
-    /** Consecutive trailing silence at end of buffer (ms) — sentence boundary proxy */
+    const pcmBufferRef = useRef<FloatChunkBuffer>(createEmptyChunkBuffer());
     const trailingSilenceMsRef = useRef(0);
     const hasHeardSpeechRef = useRef(false);
     const sampleRateRef = useRef(48000);
     const inFlightRef = useRef(false);
     const lastSuccessRef = useRef(0);
+    const mountedRef = useRef(true);
+    const fetchAbortRef = useRef<AbortController | null>(null);
+
     const assistantStateRef = useRef(assistantState);
     assistantStateRef.current = assistantState;
 
@@ -132,12 +133,23 @@ export function useSpeechCoachingAnalysis({
     pauseWhenAssistantSpeakingRef.current = pauseWhenAssistantSpeaking;
     const pauseWhenHiddenRef = useRef(pauseWhenHidden);
     pauseWhenHiddenRef.current = pauseWhenHidden;
+    const interviewLanguageRef = useRef(interviewLanguage);
+    interviewLanguageRef.current = interviewLanguage;
+
+    useEffect(() => {
+        mountedRef.current = true;
+        return () => {
+            mountedRef.current = false;
+            fetchAbortRef.current?.abort();
+            fetchAbortRef.current = null;
+        };
+    }, []);
 
     const tryFlush = useCallback(async (reason: "max" | "utterance") => {
         const sr = sampleRateRef.current;
         const minSamples = Math.ceil(MIN_CLIP_SEC * sr);
         const maxSamples = Math.floor(MAX_CLIP_SEC * sr);
-        let buf = bufferRef.current;
+        const buf = pcmBufferRef.current;
 
         if (inFlightRef.current) return;
         if (Date.now() - lastSuccessRef.current < COOLDOWN_MS) return;
@@ -149,35 +161,43 @@ export function useSpeechCoachingAnalysis({
         }
 
         if (reason === "max") {
-            if (buf.length < maxSamples) return;
+            if (buf.totalSamples < maxSamples) return;
         } else {
-            if (buf.length < minSamples || !hasHeardSpeechRef.current) return;
+            if (buf.totalSamples < minSamples || !hasHeardSpeechRef.current) return;
         }
 
-        const take = reason === "max" ? maxSamples : buf.length;
-        const chunk = buf.slice(0, take);
-        buf = sliceOffFront(buf, take);
-        bufferRef.current = buf;
+        const takeCount = reason === "max" ? maxSamples : buf.totalSamples;
+        const floatChunk = takeFirstSamples(buf, takeCount);
         trailingSilenceMsRef.current = 0;
         hasHeardSpeechRef.current = false;
 
-        const pcm = float32ToPcm16Mono(chunk);
+        const pcm = float32ToPcm16Mono(floatChunk);
         const wav = buildWavFromMonoPcm16(pcm, sr);
 
+        fetchAbortRef.current?.abort();
+        const ac = new AbortController();
+        fetchAbortRef.current = ac;
+
         inFlightRef.current = true;
-        setIsAnalyzing(true);
-        setError(null);
+        if (mountedRef.current) {
+            setIsAnalyzing(true);
+            setError(null);
+        }
 
         try {
             const form = new FormData();
             form.append("audio", new Blob([wav], { type: "audio/wav" }), "clip.wav");
+            form.append("interview_language", interviewLanguageRef.current.trim() || "English");
 
             const res = await fetch("/api/speech-coaching/analyze", {
                 method: "POST",
                 body: form,
+                signal: ac.signal,
             });
 
             const json = (await res.json()) as SpeechCoachingAnalyzeResponse;
+
+            if (!mountedRef.current) return;
 
             if (!res.ok || json.status === "error") {
                 const msg = json.status === "error" ? json.message : `HTTP ${res.status}`;
@@ -198,6 +218,10 @@ export function useSpeechCoachingAnalysis({
                 model: json.model,
             });
         } catch (e) {
+            if (!mountedRef.current) return;
+            if (e instanceof Error && e.name === "AbortError") {
+                return;
+            }
             const msg = e instanceof Error ? e.message : String(e);
             setError(msg);
             onEntryRef.current({
@@ -206,7 +230,12 @@ export function useSpeechCoachingAnalysis({
             });
         } finally {
             inFlightRef.current = false;
-            setIsAnalyzing(false);
+            if (fetchAbortRef.current === ac) {
+                fetchAbortRef.current = null;
+            }
+            if (mountedRef.current) {
+                setIsAnalyzing(false);
+            }
         }
     }, []);
 
@@ -215,7 +244,7 @@ export function useSpeechCoachingAnalysis({
 
     useEffect(() => {
         if (!enabled || !mediaStreamTrack || mediaStreamTrack.readyState === "ended") {
-            bufferRef.current = new Float32Array(0);
+            clearFloatChunkBuffer(pcmBufferRef.current);
             trailingSilenceMsRef.current = 0;
             hasHeardSpeechRef.current = false;
             return;
@@ -236,9 +265,11 @@ export function useSpeechCoachingAnalysis({
                 await resumeAudioContext(ctx);
                 if (cancelled) return;
                 if (ctx.state !== "running") {
-                    setError(
-                        "Audio capture is blocked until you interact with the page (click or press a key).",
-                    );
+                    if (mountedRef.current) {
+                        setError(
+                            "Audio capture is blocked until you interact with the page (click or press a key).",
+                        );
+                    }
                     return;
                 }
 
@@ -285,7 +316,7 @@ export function useSpeechCoachingAnalysis({
                     const chunkMs = (data.length / sr) * 1000;
                     const loud = rmsMono(data) >= SPEECH_RMS_THRESHOLD;
 
-                    bufferRef.current = appendFloat32(bufferRef.current, data);
+                    appendFloatChunk(pcmBufferRef.current, data);
 
                     if (loud) {
                         hasHeardSpeechRef.current = true;
@@ -294,13 +325,13 @@ export function useSpeechCoachingAnalysis({
                         trailingSilenceMsRef.current += chunkMs;
                     }
 
-                    const buf = bufferRef.current;
+                    const b = pcmBufferRef.current;
                     const minSamples = Math.ceil(MIN_CLIP_SEC * sr);
                     const maxSamples = Math.floor(MAX_CLIP_SEC * sr);
 
-                    if (buf.length >= maxSamples) {
+                    if (b.totalSamples >= maxSamples) {
                         if (!hasHeardSpeechRef.current) {
-                            bufferRef.current = new Float32Array(0);
+                            clearFloatChunkBuffer(pcmBufferRef.current);
                             trailingSilenceMsRef.current = 0;
                             return;
                         }
@@ -308,7 +339,7 @@ export function useSpeechCoachingAnalysis({
                         return;
                     }
 
-                    const sec = buf.length / sr;
+                    const sec = b.totalSamples / sr;
                     if (
                         sec >= MIN_CLIP_SEC &&
                         hasHeardSpeechRef.current &&
@@ -319,7 +350,9 @@ export function useSpeechCoachingAnalysis({
                 };
             } catch (e) {
                 console.error("speech coaching audio pipeline:", e);
-                setError(e instanceof Error ? e.message : String(e));
+                if (mountedRef.current) {
+                    setError(e instanceof Error ? e.message : String(e));
+                }
             }
         };
 
@@ -327,7 +360,8 @@ export function useSpeechCoachingAnalysis({
 
         return () => {
             cancelled = true;
-            bufferRef.current = new Float32Array(0);
+            fetchAbortRef.current?.abort();
+            clearFloatChunkBuffer(pcmBufferRef.current);
             trailingSilenceMsRef.current = 0;
             hasHeardSpeechRef.current = false;
             try {
