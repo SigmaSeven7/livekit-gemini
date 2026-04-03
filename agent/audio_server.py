@@ -109,6 +109,13 @@ def get_transcript_count(room_name: str) -> int:
         return 0
 
 
+# Must match PRE_SPEECH_PADDING_MS in main.py — used to reconstruct the actual
+# agent audio start in the composite recording (saved_start = raw_start - padding).
+_AGENT_PRE_ROLL_MS = 1200.0
+# Gap to leave between the end of a candidate clip and the start of agent audio.
+_CANDIDATE_END_BUFFER_MS = 150.0
+
+
 def get_transcripts(room_name: str):
     """Fetch transcripts from SQLite database for a given room."""
     try:
@@ -141,6 +148,24 @@ def get_transcripts(room_name: str):
                 "audioUrl": None,
                 "audioBase64": None,
             })
+
+        # Sort by start time so adjacency checks are reliable.
+        transcripts.sort(key=lambda t: t["timestampStart"] or 0)
+
+        # Cap each candidate clip so it ends before the next agent clip's actual
+        # audio begins in the composite recording.  Because agent clips are stored
+        # with a pre-roll already subtracted, the real agent audio start is:
+        #   agent.timestampStart + _AGENT_PRE_ROLL_MS
+        for i, t in enumerate(transcripts):
+            if t["participant"] != "candidate":
+                continue
+            for j in range(i + 1, len(transcripts)):
+                if transcripts[j]["participant"] == "agent":
+                    actual_agent_audio_start = (transcripts[j]["timestampStart"] or 0) + _AGENT_PRE_ROLL_MS
+                    cap = actual_agent_audio_start - _CANDIDATE_END_BUFFER_MS
+                    if (t["timestampEnd"] or 0) > cap:
+                        t["timestampEnd"] = cap
+                    break
 
         return transcripts
 
