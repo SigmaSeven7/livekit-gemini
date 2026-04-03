@@ -31,9 +31,7 @@ interface Transcription {
 export type { SpeechCoachingEntry };
 
 const COACHING_SOURCE: "client" | "agent" =
-    typeof process !== "undefined" && process.env.NEXT_PUBLIC_COACHING_SOURCE === "agent"
-        ? "agent"
-        : "client";
+    import.meta.env.VITE_PUBLIC_COACHING_SOURCE === "agent" ? "agent" : "client";
 
 interface AgentContextType {
     displayTranscriptions: Transcription[];

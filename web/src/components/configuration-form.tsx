@@ -146,13 +146,13 @@ export function ConfigurationForm() {
     console.log("has changes, sending RPC");
 
     try {
-      let response = await localParticipant.performRpc({
+      const response = await localParticipant.performRpc({
         destinationIdentity: agent.identity,
         method: "pg.updateConfig",
         payload: JSON.stringify(attributes),
       });
       console.log("pg.updateConfig", response);
-      let responseObj = JSON.parse(response);
+      const responseObj = JSON.parse(response);
       if (responseObj.changed) {
         toast({
           title: "Configuration updated",

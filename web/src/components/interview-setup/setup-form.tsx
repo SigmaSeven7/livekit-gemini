@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useNavigate } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
@@ -13,13 +13,10 @@ import {
     ArrowLeft,
     Check,
     Sparkles,
-    User,
-    Settings2,
     Languages,
     Building2,
     EyeOff,
     Users,
-    Briefcase,
     FileText,
     Play,
     Bot,
@@ -36,7 +33,8 @@ import {
     InterviewConfig
 } from "@/data/interview-options";
 
-const SUPPORT_EMAIL = process.env.NEXT_PUBLIC_SUPPORT_EMAIL || 'support@example.com';
+const SUPPORT_EMAIL =
+  import.meta.env.VITE_PUBLIC_SUPPORT_EMAIL || "support@example.com";
 
 /** Shared selectable option style (matches Interviewer Role chips) */
 const choiceBtnBase =
@@ -52,7 +50,7 @@ const STEPS: { id: number; title: string; description: string; icon: LucideIcon 
 ];
 
 export function SetupForm() {
-    const router = useRouter();
+    const navigate = useNavigate();
     const [currentStep, setCurrentStep] = useState(1);
     const [config, setConfig] = useState<Partial<InterviewConfig>>({
         interviewer_role: "Tech Lead",
@@ -126,19 +124,15 @@ export function SetupForm() {
             setIsCreating(false);
             const targetPath = `/interview/${interviewId}`;
 
-            if (process.env.NODE_ENV === 'development') {
-                // Warm route chunks + RSC payload before navigating so the interview page
-                // can hydrate on first paint (dev compiles on demand; cold full loads often stall).
-                router.prefetch(targetPath);
+            if (import.meta.env.DEV) {
                 await new Promise((resolve) => setTimeout(resolve, 200));
             }
 
-            router.push(targetPath);
+            navigate({ to: "/interview/$roomId", params: { roomId: interviewId } });
 
-            if (process.env.NODE_ENV === 'development') {
-                // HMR can cancel client-side navigation; hard-nav if we're still on setup.
+            if (import.meta.env.DEV) {
                 window.setTimeout(() => {
-                    if (!window.location.pathname.startsWith('/interview/')) {
+                    if (!window.location.pathname.startsWith("/interview/")) {
                         window.location.href = targetPath;
                     }
                 }, 1200);

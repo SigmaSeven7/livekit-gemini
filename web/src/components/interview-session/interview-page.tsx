@@ -1,31 +1,26 @@
 "use client";
 
-import React, { useEffect, useState, useRef, useCallback, useMemo } from "react";
+import React, { useEffect, useState, useRef, useCallback, useMemo, lazy, Suspense } from "react";
 import {
   LiveKitRoom,
   RoomAudioRenderer,
   useRoomContext,
 } from "@livekit/components-react";
 import type { LocalAudioTrack } from "livekit-client";
-import dynamic from "next/dynamic";
 import { InterviewAgentProvider, useInterviewAgent } from "./interview-agent-provider";
 import { toast } from "@/hooks/use-toast";
 import { PreFlightTrackPublisher } from "./preflight-track-publisher";
 
-const PreFlightAudioCheck = dynamic(
-    () =>
-        import("./preflight-audio-check").then((m) => ({
-            default: m.PreFlightAudioCheck,
-        })),
-    { ssr: false }
+const PreFlightAudioCheck = lazy(() =>
+  import("./preflight-audio-check").then((m) => ({
+    default: m.PreFlightAudioCheck,
+  })),
 );
 
-const Avatar3D = dynamic(
-    () =>
-        import("./avatar-3d").then((m) => ({
-            default: m.Avatar3D,
-        })),
-    { ssr: false }
+const Avatar3D = lazy(() =>
+  import("./avatar-3d").then((m) => ({
+    default: m.Avatar3D,
+  })),
 );
 import type { InterviewLanguage } from "@/data/interview-options";
 import type { CoachingSessionStaticContext } from "@/lib/speech-coaching-context";
@@ -42,7 +37,7 @@ function interviewLanguageFromConfig(config: Record<string, unknown> | null): In
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PhoneOff, Mic, MicOff, Loader2, CheckCircle2, XCircle, UserRound, MessageSquare, ChevronDown, Sparkles } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { useNavigate } from "@tanstack/react-router";
 import { useLocalParticipant } from "@livekit/components-react";
 
 function topEmotionScores(scores: Record<string, number> | undefined, n: number) {
@@ -494,7 +489,9 @@ function InterviewSessionContent({ onDisconnect }: { onDisconnect: () => void })
                         className="mt-0 flex min-h-0 flex-1 flex-col overflow-hidden focus-visible:outline-none"
                     >
                         <div className="flex min-h-0 flex-1 items-stretch border-b border-border/50">
+                            <Suspense fallback={<div className="flex h-full min-h-[220px] w-full items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>}>
                             <Avatar3D modelPath="/male.glb" className="h-full min-h-[220px] w-full" isActive={true} />
+                            </Suspense>
                         </div>
                     </TabsContent>
 
@@ -520,7 +517,9 @@ function InterviewSessionContent({ onDisconnect }: { onDisconnect: () => void })
 
             <div className="flex min-h-0 flex-1 overflow-hidden">
                 <div className="flex w-1/3 min-w-[300px] max-w-[400px] border-r border-border">
+                    <Suspense fallback={<div className="flex h-full w-full items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>}>
                     <Avatar3D modelPath="/male.glb" className="h-full w-full scale-90" isActive={true} />
+                    </Suspense>
                 </div>
 
                 <div className="flex min-w-0 flex-1 flex-col min-h-0">
@@ -561,7 +560,7 @@ function coachingSessionStaticFromConfig(
 }
 
 export function InterviewPage({ roomId }: { roomId: string }) {
-    const router = useRouter();
+    const navigate = useNavigate();
     const [configForToken, setConfigForToken] = useState<Record<string, unknown> | null>(null);
     const [token, setToken] = useState("");
     const [wsUrl, setWsUrl] = useState("");
@@ -652,7 +651,7 @@ export function InterviewPage({ roomId }: { roomId: string }) {
             <div className="flex flex-col items-center justify-center h-screen bg-background gap-4">
                 <p className="text-sm font-medium text-destructive">{setupError}</p>
                 <button
-                    onClick={() => router.push("/")}
+                    onClick={() => navigate({ to: "/" })}
                     className="px-6 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity"
                 >
                     Go Back
@@ -680,7 +679,9 @@ export function InterviewPage({ roomId }: { roomId: string }) {
         return (
             <div className="flex flex-col items-center justify-center h-screen bg-background">
                 <div className="w-full max-w-lg rounded-2xl border border-border bg-card p-8 shadow-lg">
+                    <Suspense fallback={<div className="flex justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>}>
                     <PreFlightAudioCheck onSuccess={handlePreFlightSuccess} />
+                    </Suspense>
                 </div>
             </div>
         );
@@ -717,7 +718,7 @@ export function InterviewPage({ roomId }: { roomId: string }) {
                 <PreFlightTrackPublisher calibratedTrack={calibratedTrack} />
                 <div className="h-full w-full flex items-center justify-center">
                     <div className="w-full h-full shadow-2xl md:border-x border-border">
-                        <InterviewSessionContent onDisconnect={() => router.push("/")} />
+                        <InterviewSessionContent onDisconnect={() => navigate({ to: "/" })} />
                     </div>
                 </div>
                 <RoomAudioRenderer />

@@ -9,9 +9,13 @@ node_modules
 # testing
 web/coverage
 
-# next.js
+# next.js (legacy)
 /.next/
 /out/
+
+# TanStack Start / Vite / Nitro
+.output/
+dist/
 
 # production
 /build
@@ -34,7 +38,6 @@ yarn-error.log*
 
 # typescript
 *.tsbuildinfo
-next-env.d.ts
 
 /uploads/
 dev.db

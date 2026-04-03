@@ -20,7 +20,6 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { ArrowUpRight, LockKeyhole } from "lucide-react";
-import Link from "next/link";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
@@ -115,26 +114,28 @@ export function AuthDialog({
                   <DialogDescription>
                     Try out Google&apos;s new Gemini 2.5 Live API
                     right from your browser with this playground built on{" "}
-                    <Link
+                    <a
                       href="https://github.com/livekit/agents"
                       target="_blank"
+                      rel="noopener noreferrer"
                       className="underline"
                       onClick={(e) => e.stopPropagation()}
                     >
                       LiveKit Agents
-                    </Link>
+                    </a>
                     .
                   </DialogDescription>
                   <DialogDescription>
                     You must have a valid{" "}
-                    <Link
+                    <a
                       href="https://aistudio.google.com/app/apikey"
                       target="_blank"
+                      rel="noopener noreferrer"
                       className="underline text-gemini-blue"
                       onClick={(e) => e.stopPropagation()}
                     >
                       Gemini API key
-                    </Link>{" "}
+                    </a>{" "}
                     to connect the playground to your own Gemini platform
                     account.
                   </DialogDescription>
@@ -148,15 +149,16 @@ export function AuthDialog({
                       <div className="flex flex-col gap-2">
                         <FormLabel className="font-semibold text-sm whitespace-nowrap">
                           Enter your{" "}
-                          <Link
+                          <a
                             href="https://aistudio.google.com/app/apikey"
                             target="_blank"
+                            rel="noopener noreferrer"
                             className="inline-flex items-center text-gemini-blue underline"
                             onClick={(e) => e.stopPropagation()}
                           >
                             Gemini API Key
                             <ArrowUpRight className="h-4 w-4 ml-1" />
-                          </Link>
+                          </a>
                         </FormLabel>
                         <div className="flex gap-2 w-full items-center">
                           <FormControl className="w-full">

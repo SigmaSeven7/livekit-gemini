@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { Link } from "@tanstack/react-router";
 import { Trash2, Check } from "lucide-react";
 import { InterviewStatus } from "@/types/conversation";
 import { formatDateShort } from "@/lib/utils/date";
@@ -41,7 +41,7 @@ export function InterviewCard({ id, status, createdAt, messageCount, config, onD
   };
 
   return (
-    <Link href={`/history/${id}`}>
+    <Link to="/history/$interviewId" params={{ interviewId: id }}>
       <div className={`bg-white border rounded-2xl p-6 hover:shadow-lg transition-all cursor-pointer group relative ${isSelected ? 'border-indigo-500 ring-2 ring-indigo-200' : 'border-slate-100'}`}>
         {/* Selection checkbox */}
         {onSelect && (

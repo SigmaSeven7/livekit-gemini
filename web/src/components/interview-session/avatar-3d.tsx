@@ -1,7 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
-import dynamic from "next/dynamic";
+import React, { useEffect, useRef, useState, lazy, Suspense } from "react";
 import { useTracks, type TrackReference } from "@livekit/components-react";
 import { Track, createAudioAnalyser, isAudioTrack } from "livekit-client";
 
@@ -10,7 +9,7 @@ const USE_SIMLI_AVATAR = false;
 
 // Import Simli component if enabled
 const AvatarSimli = USE_SIMLI_AVATAR
-  ? dynamic(() => import("./avatar-simli").then(m => ({ default: m.AvatarSimli })), { ssr: false })
+  ? lazy(() => import("./avatar-simli").then((m) => ({ default: m.AvatarSimli })))
   : null;
 
 declare global {
@@ -452,7 +451,11 @@ function Avatar3DGLB({
 
 export function Avatar3D(props: Avatar3DProps) {
   if (USE_SIMLI_AVATAR && AvatarSimli) {
-    return <AvatarSimli className={props.className} isActive={props.isActive} />;
+    return (
+      <Suspense fallback={null}>
+        <AvatarSimli className={props.className} isActive={props.isActive} />
+      </Suspense>
+    );
   }
   return <Avatar3DGLB {...props} />;
 }

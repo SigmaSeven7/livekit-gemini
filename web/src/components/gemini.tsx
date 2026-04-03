@@ -1,6 +1,6 @@
 "use client";
 
-import Logo from "@/assets/gemini.svg";
+import Logo from "@/assets/gemini.svg?react";
 
 export default function LK() {
   return (

@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
+import { useNavigate, Link } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
 
 /**
@@ -10,15 +9,15 @@ import { ArrowLeft } from "lucide-react";
  * Automatically redirects to home page after 3 seconds.
  */
 export function InterviewRoomNotFound() {
-  const router = useRouter();
+  const navigate = useNavigate();
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      router.push('/');
+      navigate({ to: "/" });
     }, 3000);
 
     return () => clearTimeout(timer);
-  }, [router]);
+  }, [navigate]);
 
   return (
     <div className="flex flex-col min-h-screen bg-gradient-to-br from-sky-50 via-stone-50 to-sky-50/30 font-sans text-gray-800 overflow-x-hidden">
@@ -26,7 +25,7 @@ export function InterviewRoomNotFound() {
       <header className="flex items-center justify-between px-8 py-6 border-b border-stone-200/40 backdrop-blur-md bg-white/60 sticky top-0 z-50">
         <div className="flex items-center gap-4">
           <Link
-            href="/"
+            to="/"
             className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
           >
             <ArrowLeft className="w-5 h-5 text-slate-600" />
@@ -46,7 +45,7 @@ export function InterviewRoomNotFound() {
             <p className="text-slate-600 mb-2">The interview room you&apos;re looking for doesn&apos;t exist or has expired.</p>
             <p className="text-sm text-slate-500">Redirecting to home page in 3 seconds...</p>
             <Link
-              href="/"
+              to="/"
               className="inline-block mt-6 px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-medium transition-colors"
             >
               Go Home Now

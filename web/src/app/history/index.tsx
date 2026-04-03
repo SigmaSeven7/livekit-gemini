@@ -1,7 +1,5 @@
-"use client";
-
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
-import Link from "next/link";
 import { ArrowLeft, Trash2, Loader2, CheckSquare, Square } from "lucide-react";
 import { InterviewCard } from "@/components/history/interview-card";
 import { useInterviews } from "@/hooks/use-interviews";
@@ -17,19 +15,30 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
-export default function HistoryPage() {
+export const Route = createFileRoute("/history/")({
+  component: HistoryPage,
+});
+
+function HistoryPage() {
   const queryClient = useQueryClient();
-  const { data, isLoading, error, fetchNextPage, hasNextPage, isFetchingNextPage } = useInterviews();
+  const {
+    data,
+    isLoading,
+    error,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInterviews();
   const [showDeleteAllDialog, setShowDeleteAllDialog] = useState(false);
-  const [interviewToDelete, setInterviewToDelete] = useState<string | null>(null);
+  const [interviewToDelete, setInterviewToDelete] = useState<string | null>(
+    null,
+  );
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
-  // Flatten paginated results
-  const interviews = data?.pages.flatMap(page => page.data) ?? [];
+  const interviews = data?.pages.flatMap((page) => page.data) ?? [];
 
-  // Toggle selection for a single interview
   const handleSelect = (id: string, selected: boolean) => {
-    setSelectedIds(prev => {
+    setSelectedIds((prev) => {
       const newSet = new Set(prev);
       if (selected) {
         newSet.add(id);
@@ -40,90 +49,86 @@ export default function HistoryPage() {
     });
   };
 
-  // Select/deselect all
   const handleSelectAll = () => {
     if (selectedIds.size === interviews.length) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(interviews.map(i => i.id)));
+      setSelectedIds(new Set(interviews.map((i) => i.id)));
     }
   };
 
-  // Delete all interviews mutation
   const deleteAllMutation = useMutation({
     mutationFn: async () => {
-      const response = await fetch('/api/interviews?confirm=true', {
-        method: 'DELETE',
+      const response = await fetch("/api/interviews?confirm=true", {
+        method: "DELETE",
       });
-      
+
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to delete all interviews');
+        const errJson = await response.json();
+        throw new Error(errJson.error || "Failed to delete all interviews");
       }
-      
+
       return response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['interviews'] });
+      queryClient.invalidateQueries({ queryKey: ["interviews"] });
       setShowDeleteAllDialog(false);
       setSelectedIds(new Set());
     },
     onError: (err: Error) => {
-      alert(err.message || 'Failed to delete all interviews');
+      alert(err.message || "Failed to delete all interviews");
     },
   });
 
-  // Delete selected interviews mutation
   const deleteSelectedMutation = useMutation({
     mutationFn: async (ids: string[]) => {
       const results = await Promise.all(
         ids.map(async (id) => {
           const response = await fetch(`/api/interviews/${id}`, {
-            method: 'DELETE',
+            method: "DELETE",
           });
           return { id, ok: response.ok };
-        })
+        }),
       );
-      const failed = results.filter(r => !r.ok);
+      const failed = results.filter((r) => !r.ok);
       if (failed.length > 0) {
         throw new Error(`Failed to delete ${failed.length} interview(s)`);
       }
       return results;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['interviews'] });
+      queryClient.invalidateQueries({ queryKey: ["interviews"] });
       setSelectedIds(new Set());
     },
     onError: (err: Error) => {
-      alert(err.message || 'Failed to delete selected interviews');
+      alert(err.message || "Failed to delete selected interviews");
     },
   });
 
-  // Delete single interview mutation
   const deleteInterviewMutation = useMutation({
     mutationFn: async (id: string) => {
       const response = await fetch(`/api/interviews/${id}`, {
-        method: 'DELETE',
+        method: "DELETE",
       });
-      
+
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to delete interview');
+        const errJson = await response.json();
+        throw new Error(errJson.error || "Failed to delete interview");
       }
-      
+
       return response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['interviews'] });
+      queryClient.invalidateQueries({ queryKey: ["interviews"] });
       setInterviewToDelete(null);
-      setSelectedIds(prev => {
+      setSelectedIds((prev) => {
         const newSet = new Set(prev);
-        newSet.delete(interviewToDelete || '');
+        newSet.delete(interviewToDelete || "");
         return newSet;
       });
     },
     onError: (err: Error) => {
-      alert(err.message || 'Failed to delete interview');
+      alert(err.message || "Failed to delete interview");
     },
   });
 
@@ -139,28 +144,29 @@ export default function HistoryPage() {
     deleteInterviewMutation.mutate(id);
   };
 
-  const isAllSelected = interviews.length > 0 && selectedIds.size === interviews.length;
+  const isAllSelected =
+    interviews.length > 0 && selectedIds.size === interviews.length;
   const isSomeSelected = selectedIds.size > 0;
 
   return (
     <div className="flex flex-col min-h-screen bg-gradient-to-br from-sky-50 via-stone-50 to-sky-50/30 font-sans text-gray-800 overflow-x-hidden">
-      {/* Header */}
       <header className="flex items-center justify-between px-8 py-6 border-b border-stone-200/40 backdrop-blur-md bg-white/60 sticky top-0 z-50">
         <div className="flex items-center gap-4">
           <Link
-            href="/"
+            to="/"
             className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
           >
             <ArrowLeft className="w-5 h-5 text-slate-600" />
           </Link>
           <div className="flex items-center gap-3">
             <div className="w-3 h-3 rounded-full bg-sky-200 animate-pulse"></div>
-            <span className="font-normal tracking-wide text-sm text-gray-700">Interview History</span>
+            <span className="font-normal tracking-wide text-sm text-gray-700">
+              Interview History
+            </span>
           </div>
         </div>
       </header>
 
-      {/* Main Content */}
       <main className="flex-1 px-4 sm:px-6 lg:px-8 py-8">
         <div className="max-w-6xl mx-auto">
           {isLoading ? (
@@ -170,14 +176,18 @@ export default function HistoryPage() {
           ) : error ? (
             <div className="bg-red-50 border border-red-200 rounded-2xl p-6 text-red-700">
               <p className="font-semibold mb-1">Error loading interviews</p>
-              <p className="text-sm">{error.message || 'Failed to load interviews'}</p>
+              <p className="text-sm">
+                {error.message || "Failed to load interviews"}
+              </p>
             </div>
           ) : interviews.length === 0 ? (
             <div className="bg-white border border-slate-100 rounded-2xl p-12 text-center">
               <p className="text-slate-600 mb-2">No interviews found</p>
-              <p className="text-sm text-slate-500">Start your first interview to see it here</p>
+              <p className="text-sm text-slate-500">
+                Start your first interview to see it here
+              </p>
               <Link
-                href="/"
+                to="/"
                 className="inline-block mt-4 px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-medium transition-colors"
               >
                 Start Interview
@@ -187,25 +197,36 @@ export default function HistoryPage() {
             <>
               <div className="mb-6 flex items-center justify-between">
                 <div>
-                  <h1 className="text-2xl font-bold text-slate-900 mb-2">Your Interviews</h1>
+                  <h1 className="text-2xl font-bold text-slate-900 mb-2">
+                    Your Interviews
+                  </h1>
                   <p className="text-sm text-slate-600">
-                    {interviews.length} {interviews.length === 1 ? 'interview' : 'interviews'}
-                    {isSomeSelected && <span className="ml-2 text-indigo-600">({selectedIds.size} selected)</span>}
+                    {interviews.length}{" "}
+                    {interviews.length === 1 ? "interview" : "interviews"}
+                    {isSomeSelected && (
+                      <span className="ml-2 text-indigo-600">
+                        ({selectedIds.size} selected)
+                      </span>
+                    )}
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
-                  {/* Select All / Deselect All */}
                   <button
+                    type="button"
                     onClick={handleSelectAll}
                     className="flex items-center gap-2 px-4 py-2 border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-xl text-sm font-medium transition-colors"
                   >
-                    {isAllSelected ? <Square className="w-4 h-4" /> : <CheckSquare className="w-4 h-4" />}
-                    {isAllSelected ? 'Deselect All' : 'Select All'}
+                    {isAllSelected ? (
+                      <Square className="w-4 h-4" />
+                    ) : (
+                      <CheckSquare className="w-4 h-4" />
+                    )}
+                    {isAllSelected ? "Deselect All" : "Select All"}
                   </button>
-                  
-                  {/* Delete Selected (only shown when items are selected) */}
+
                   {isSomeSelected && (
                     <button
+                      type="button"
                       onClick={() => setShowDeleteAllDialog(true)}
                       disabled={deleteSelectedMutation.isPending}
                       className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white rounded-xl text-sm font-medium transition-colors"
@@ -218,10 +239,10 @@ export default function HistoryPage() {
                       Delete Selected
                     </button>
                   )}
-                  
-                  {/* Delete All (only shown when nothing is selected) */}
+
                   {!isSomeSelected && (
                     <button
+                      type="button"
                       onClick={() => setShowDeleteAllDialog(true)}
                       disabled={deleteAllMutation.isPending}
                       className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white rounded-xl text-sm font-medium transition-colors"
@@ -243,10 +264,15 @@ export default function HistoryPage() {
                     id={interview.id}
                     status={interview.status}
                     createdAt={interview.createdAt}
-                    messageCount={interview.messageCount ?? interview.transcript.length}
+                    messageCount={
+                      interview.messageCount ?? interview.transcript.length
+                    }
                     config={interview.config}
                     onDelete={(id) => setInterviewToDelete(id)}
-                    isDeleting={deleteInterviewMutation.isPending && deleteInterviewMutation.variables === interview.id}
+                    isDeleting={
+                      deleteInterviewMutation.isPending &&
+                      deleteInterviewMutation.variables === interview.id
+                    }
                     isSelected={selectedIds.has(interview.id)}
                     onSelect={handleSelect}
                   />
@@ -255,11 +281,12 @@ export default function HistoryPage() {
               {hasNextPage && (
                 <div className="mt-6 flex justify-center">
                   <button
+                    type="button"
                     onClick={() => fetchNextPage()}
                     disabled={isFetchingNextPage}
                     className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white rounded-xl text-sm font-medium transition-colors"
                   >
-                    {isFetchingNextPage ? 'Loading...' : 'Load More'}
+                    {isFetchingNextPage ? "Loading..." : "Load More"}
                   </button>
                 </div>
               )}
@@ -268,21 +295,24 @@ export default function HistoryPage() {
         </div>
       </main>
 
-      {/* Delete Confirmation Dialog */}
-      <AlertDialog open={showDeleteAllDialog} onOpenChange={setShowDeleteAllDialog}>
-        <AlertDialogContent 
+      <AlertDialog
+        open={showDeleteAllDialog}
+        onOpenChange={setShowDeleteAllDialog}
+      >
+        <AlertDialogContent
           className="flex flex-col items-center justify-center bg-white border border-slate-100 rounded-2xl shadow-xl"
           overlayClassName="bg-black/20 backdrop-blur-sm"
         >
           <AlertDialogHeader>
             <AlertDialogTitle className="text-slate-900">
-              {isSomeSelected ? 'Delete Selected Interviews?' : 'Delete All Interviews?'}
+              {isSomeSelected
+                ? "Delete Selected Interviews?"
+                : "Delete All Interviews?"}
             </AlertDialogTitle>
             <AlertDialogDescription className="text-slate-600">
-              {isSomeSelected 
-                ? `Are you sure you want to delete ${selectedIds.size} selected ${selectedIds.size === 1 ? 'interview' : 'interviews'}? This action cannot be undone.`
-                : `Are you sure you want to delete all ${interviews.length} ${interviews.length === 1 ? 'interview' : 'interviews'}? This action cannot be undone.`
-              }
+              {isSomeSelected
+                ? `Are you sure you want to delete ${selectedIds.size} selected ${selectedIds.size === 1 ? "interview" : "interviews"}? This action cannot be undone.`
+                : `Are you sure you want to delete all ${interviews.length} ${interviews.length === 1 ? "interview" : "interviews"}? This action cannot be undone.`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -299,16 +329,21 @@ export default function HistoryPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Delete Single Interview Confirmation Dialog */}
-      <AlertDialog open={interviewToDelete !== null} onOpenChange={(open) => !open && setInterviewToDelete(null)}>
-        <AlertDialogContent 
+      <AlertDialog
+        open={interviewToDelete !== null}
+        onOpenChange={(open) => !open && setInterviewToDelete(null)}
+      >
+        <AlertDialogContent
           className="bg-white border border-slate-100 rounded-2xl shadow-xl"
           overlayClassName="bg-black/20 backdrop-blur-sm"
         >
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-slate-900">Delete Interview?</AlertDialogTitle>
+            <AlertDialogTitle className="text-slate-900">
+              Delete Interview?
+            </AlertDialogTitle>
             <AlertDialogDescription className="text-slate-600">
-              Are you sure you want to delete this interview? This action cannot be undone.
+              Are you sure you want to delete this interview? This action cannot
+              be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="!justify-center">
@@ -316,7 +351,9 @@ export default function HistoryPage() {
               Cancel
             </AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => interviewToDelete && handleDeleteInterview(interviewToDelete)}
+              onClick={() =>
+                interviewToDelete && handleDeleteInterview(interviewToDelete)
+              }
               className="bg-red-600 hover:bg-red-700 text-white rounded-xl"
             >
               Delete

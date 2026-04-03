@@ -67,7 +67,6 @@ export function NanoBananaFeed() {
           >
             <div className="pointer-events-auto max-w-2xl w-full bg-bg1 rounded-2xl shadow-2xl overflow-hidden border border-separator1">
               <div className="relative aspect-square bg-bg2">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img 
                   src={currentImage.imageUrl} 
                   alt={currentImage.prompt}

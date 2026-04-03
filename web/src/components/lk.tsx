@@ -1,6 +1,6 @@
 "use client";
 
-import Logo from "@/assets/lk.svg";
+import Logo from "@/assets/lk.svg?react";
 
 export default function LK() {
   return (

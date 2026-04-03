@@ -266,7 +266,8 @@ def get_audio_file():
                 "Bucket": R2_BUCKET_NAME,
                 "Key": s3_key,
             },
-            ExpiresIn=3600,
+            # Longer default; DB still stores this URL — app refresh on read keeps playback working.
+            ExpiresIn=604800,
         )
 
         # Update transcripts with the audio URL

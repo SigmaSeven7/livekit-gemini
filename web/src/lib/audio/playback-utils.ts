@@ -1,6 +1,6 @@
 /**
  * Audio Playback Utilities
- * 
+ *
  * Helper functions for playing audio from URLs with timestamp seeking.
  * Used in the history/demi-chat component for replaying interview messages.
  */
@@ -31,6 +31,40 @@ function getAudioElement(): HTMLAudioElement {
   return audioElement;
 }
 
+function waitForCanPlay(audio: HTMLAudioElement): Promise<void> {
+  if (audio.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) {
+    return Promise.resolve();
+  }
+  return new Promise((resolve, reject) => {
+    const ok = () => {
+      audio.removeEventListener("error", bad);
+      resolve();
+    };
+    const bad = () => {
+      audio.removeEventListener("canplay", ok);
+      const err = audio.error;
+      reject(
+        new Error(
+          err
+            ? `Audio load failed (${err.code}): ${err.message || "unknown"}`
+            : "Audio load failed",
+        ),
+      );
+    };
+    audio.addEventListener("canplay", ok, { once: true });
+    audio.addEventListener("error", bad, { once: true });
+  });
+}
+
+function waitForSeeked(audio: HTMLAudioElement): Promise<void> {
+  if (!audio.seeking) {
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    audio.addEventListener("seeked", () => resolve(), { once: true });
+  });
+}
+
 /**
  * Plays audio from a URL, seeking to a specific start time and stopping at end time.
  * @param url        - The URL to fetch audio from
@@ -46,56 +80,115 @@ export async function playAudioFromUrlWithTimestamp(
   messageId?: string,
   rate: number = 1,
 ): Promise<void> {
+  const trimmed = url?.trim();
+  if (!trimmed) {
+    throw new Error("No audio URL");
+  }
+
   const audio = getAudioElement();
+  let settled = false;
 
-  if (currentAudioUrl !== url) {
-    audio.src = url;
-    currentAudioUrl = url;
-    await audio.play();
-  } else if (audio.paused) {
-    await audio.play();
-  }
+  const finish = (resolve: () => void) => {
+    if (settled) return;
+    settled = true;
+    playingMessageId = null;
+    if (checkInterval) {
+      clearInterval(checkInterval);
+      checkInterval = null;
+    }
+    audio.onended = null;
+    audio.onerror = null;
+    resolve();
+  };
 
-  audio.currentTime = startTimeMs / 1000;
-  audio.playbackRate = Math.max(0.5, Math.min(2, rate));
-
-  if (endTimeMs !== undefined && messageId) {
-    playingMessageId = messageId;
-    currentStartTimeMs = startTimeMs;
-    currentEndTime = endTimeMs;
-
-    if (checkInterval) clearInterval(checkInterval);
-
-    checkInterval = window.setInterval(() => {
-      if (playingMessageId === messageId) {
-        if (audio.currentTime * 1000 >= currentEndTime) {
-          audio.pause();
-          playingMessageId = null;
-          if (checkInterval) { clearInterval(checkInterval); checkInterval = null; }
-        }
+  return new Promise<void>((resolve, reject) => {
+    const onPlaybackEnd = () => finish(resolve);
+    const onError = () => {
+      if (settled) return;
+      settled = true;
+      playingMessageId = null;
+      if (checkInterval) {
+        clearInterval(checkInterval);
+        checkInterval = null;
       }
-    }, 100);
-  }
+      audio.onended = null;
+      audio.onerror = null;
+      const err = audio.error;
+      reject(
+        new Error(
+          err
+            ? `Audio playback error (${err.code}): ${err.message || "unknown"}`
+            : "Audio playback error",
+        ),
+      );
+    };
 
-  return new Promise((resolve, reject) => {
-    audio.onended = () => {
-      playingMessageId = null;
-      if (checkInterval) { clearInterval(checkInterval); checkInterval = null; }
-      resolve();
-    };
-    audio.onerror = (error) => {
-      playingMessageId = null;
-      if (checkInterval) { clearInterval(checkInterval); checkInterval = null; }
-      console.error('Failed to play audio:', error);
-      reject(error);
-    };
+    (async () => {
+      try {
+        if (currentAudioUrl !== trimmed) {
+          audio.pause();
+          audio.src = trimmed;
+          currentAudioUrl = trimmed;
+          audio.load();
+          await waitForCanPlay(audio);
+        }
+
+        audio.onended = onPlaybackEnd;
+        audio.onerror = onError;
+
+        audio.currentTime = startTimeMs / 1000;
+        await waitForSeeked(audio);
+
+        audio.playbackRate = Math.max(0.5, Math.min(2, rate));
+
+        if (endTimeMs !== undefined && messageId) {
+          playingMessageId = messageId;
+          currentStartTimeMs = startTimeMs;
+          currentEndTime = endTimeMs;
+
+          if (checkInterval) clearInterval(checkInterval);
+
+          checkInterval = window.setInterval(() => {
+            if (playingMessageId === messageId) {
+              if (audio.currentTime * 1000 >= currentEndTime) {
+                audio.pause();
+                playingMessageId = null;
+                if (checkInterval) {
+                  clearInterval(checkInterval);
+                  checkInterval = null;
+                }
+                finish(resolve);
+              }
+            }
+          }, 100);
+        }
+
+        await audio.play();
+      } catch (e) {
+        if (!settled) {
+          settled = true;
+          playingMessageId = null;
+          if (checkInterval) {
+            clearInterval(checkInterval);
+            checkInterval = null;
+          }
+          audio.onended = null;
+          audio.onerror = null;
+        }
+        reject(e instanceof Error ? e : new Error(String(e)));
+      }
+    })();
   });
 }
 
 /**
  * Returns the current playback position within the active clip, or null if nothing is playing.
  */
-export function getPlaybackProgress(): { currentMs: number; startMs: number; endMs: number } | null {
+export function getPlaybackProgress(): {
+  currentMs: number;
+  startMs: number;
+  endMs: number;
+} | null {
   if (!audioElement || !playingMessageId) return null;
   return {
     currentMs: audioElement.currentTime * 1000,
@@ -110,14 +203,16 @@ export function getPlaybackProgress(): { currentMs: number; startMs: number; end
 export function seekToFraction(fraction: number): void {
   if (!audioElement || !playingMessageId) return;
   const f = Math.max(0, Math.min(1, fraction));
-  audioElement.currentTime = (currentStartTimeMs + (currentEndTime - currentStartTimeMs) * f) / 1000;
+  audioElement.currentTime =
+    (currentStartTimeMs + (currentEndTime - currentStartTimeMs) * f) / 1000;
 }
 
 /**
  * Changes the playback rate of the currently loaded audio element (0.5–2).
  */
 export function setPlaybackRate(rate: number): void {
-  if (audioElement) audioElement.playbackRate = Math.max(0.5, Math.min(2, rate));
+  if (audioElement)
+    audioElement.playbackRate = Math.max(0.5, Math.min(2, rate));
 }
 
 /**
@@ -146,12 +241,12 @@ export function getPlayingMessageId(): string | null {
  * Concatenates messages that have the same timestampStart.
  * Messages with the same start time are merged, with the one having
  * the greater timestampEnd coming last.
- * 
+ *
  * @param messages - Array of conversation messages
  * @returns Concatenated array of messages
  */
 export function concatenateMessagesWithSameStartTime(
-  messages: ConversationMessage[]
+  messages: ConversationMessage[],
 ): ConversationMessage[] {
   if (!messages || messages.length === 0) return [];
 
@@ -170,17 +265,19 @@ export function concatenateMessagesWithSameStartTime(
   // and keep the max end time
   const result: ConversationMessage[] = [];
 
-  for (const [startTime, group] of groupedByStartTime) {
+  for (const [, group] of groupedByStartTime) {
     if (group.length === 1) {
       // No concatenation needed
       result.push(group[0]);
     } else {
       // Sort by timestampEnd to find the one with greatest end time
-      const sortedByEnd = [...group].sort((a, b) => a.timestampEnd - b.timestampEnd);
-      
+      const sortedByEnd = [...group].sort(
+        (a, b) => a.timestampEnd - b.timestampEnd,
+      );
+
       // Concatenate all transcripts
       const concatenatedTranscript = sortedByEnd
-        .map(m => m.transcript)
+        .map((m) => m.transcript)
         .join(" ");
 
       // Use the message with the greatest timestampEnd as the base

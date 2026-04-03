@@ -1,26 +1,24 @@
 "use client";
 
-import { usePathname, useSearchParams } from "next/navigation";
+import { useLocation } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { usePostHog } from "posthog-js/react";
 
 export default function PostHogPageView(): null {
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
+  const location = useLocation();
   const posthog = usePostHog();
   useEffect(() => {
-    // Track pageviews
-    if (pathname && posthog) {
-      let url = window.origin + pathname;
-      if (searchParams.toString()) {
-        url = url + `?${searchParams.toString()}`;
+    if (posthog) {
+      let url = window.origin + location.pathname;
+      if (location.search) {
+        url = url + location.search;
       }
       posthog.capture("$pageview", {
         $current_url: url,
       });
       console.log("captured pageview", url);
     }
-  }, [pathname, searchParams, posthog]);
+  }, [location.pathname, location.search, posthog]);
 
   return null;
 }
