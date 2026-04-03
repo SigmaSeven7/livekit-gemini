@@ -3,6 +3,13 @@
 import { useEffect } from "react";
 import { useNavigate, Link } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
+import {
+  interview_go_home,
+  room_not_found_body,
+  room_not_found_header,
+  room_not_found_redirect,
+  room_not_found_title,
+} from "@/paraglide/messages";
 
 /**
  * Component displayed when an interview room is not found.
@@ -32,7 +39,9 @@ export function InterviewRoomNotFound() {
           </Link>
           <div className="flex items-center gap-3">
             <div className="w-3 h-3 rounded-full bg-sky-200 animate-pulse"></div>
-            <span className="font-normal tracking-wide text-sm text-gray-700">Interview Room Not Found</span>
+            <span className="font-normal tracking-wide text-sm text-gray-700">
+              {String(room_not_found_header())}
+            </span>
           </div>
         </div>
       </header>
@@ -41,14 +50,18 @@ export function InterviewRoomNotFound() {
       <main className="flex-1 px-4 sm:px-6 lg:px-8 py-8">
         <div className="max-w-4xl mx-auto">
           <div className="bg-white border border-slate-100 rounded-2xl p-12 text-center">
-            <h1 className="text-2xl font-bold text-slate-900 mb-4">Interview Room Not Found</h1>
-            <p className="text-slate-600 mb-2">The interview room you&apos;re looking for doesn&apos;t exist or has expired.</p>
-            <p className="text-sm text-slate-500">Redirecting to home page in 3 seconds...</p>
+            <h1 className="text-2xl font-bold text-slate-900 mb-4">
+              {String(room_not_found_title())}
+            </h1>
+            <p className="text-slate-600 mb-2">{String(room_not_found_body())}</p>
+            <p className="text-sm text-slate-500">
+              {String(room_not_found_redirect())}
+            </p>
             <Link
               to="/"
               className="inline-block mt-6 px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-medium transition-colors"
             >
-              Go Home Now
+              {String(interview_go_home())}
             </Link>
           </div>
         </div>

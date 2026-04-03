@@ -23,6 +23,7 @@
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.1",
+    "@inlang/paraglide-js": "^2.15.1",
     "@livekit/components-react": "^2.9.15",
     "@livekit/components-styles": "^1.1.6",
     "@livekit/krisp-noise-filter": "^0.3.4",

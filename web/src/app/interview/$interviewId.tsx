@@ -29,20 +29,20 @@ async function getInterviewExists(id: string): Promise<boolean> {
   }
 }
 
-export const Route = createFileRoute("/interview/$roomId")({
+export const Route = createFileRoute("/interview/$interviewId")({
   component: InterviewRoomPage,
   loader: async ({ params }) => {
-    const interviewExists = await getInterviewExists(params.roomId);
-    return { roomId: params.roomId, interviewExists };
+    const interviewExists = await getInterviewExists(params.interviewId);
+    return { interviewId: params.interviewId, interviewExists };
   },
 });
 
 function InterviewRoomPage() {
-  const { roomId, interviewExists } = Route.useLoaderData();
+  const { interviewId, interviewExists } = Route.useLoaderData();
 
   if (!interviewExists) {
     return <InterviewRoomNotFound />;
   }
 
-  return <InterviewPage roomId={roomId} />;
+  return <InterviewPage roomId={interviewId} />;
 }

@@ -10,9 +10,3 @@ export const STATUS_COLORS: Record<InterviewStatus, string> = {
   in_progress: 'bg-amber-100 text-amber-700 border-amber-200',
   paused: 'bg-slate-100 text-slate-700 border-slate-200',
 };
-
-export const STATUS_LABELS: Record<InterviewStatus, string> = {
-  completed: 'Completed',
-  in_progress: 'In Progress',
-  paused: 'Paused',
-};

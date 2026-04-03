@@ -20,14 +20,14 @@ function InterviewDetailPage() {
   }
 
   return (
-    <div className="flex flex-col min-h-screen bg-gradient-to-br from-sky-50 via-stone-50 to-sky-50/30 font-sans text-gray-800 overflow-x-hidden">
-      <header className="flex items-center justify-between px-8 py-6 border-b border-stone-200/40 backdrop-blur-md bg-white/60 sticky top-0 z-50">
+    <div className="flex flex-col min-h-screen bg-gradient-to-br from-sky-100 via-sky-50/95 to-blue-50 font-sans text-gray-800 overflow-x-hidden">
+      <header className="flex items-center justify-between px-8 py-6 border-b border-sky-200/50 backdrop-blur-md bg-white/70 sticky top-0 z-50">
         <div className="flex items-center gap-4">
           <Link
             to="/history"
-            className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+            className="p-2 hover:bg-sky-50/90 rounded-lg transition-colors"
           >
-            <ArrowLeft className="w-5 h-5 text-slate-600" />
+            <ArrowLeft className="w-5 h-5 text-gray-600" />
           </Link>
           <div className="flex items-center gap-3">
             <div className="w-3 h-3 rounded-full bg-sky-200 animate-pulse"></div>

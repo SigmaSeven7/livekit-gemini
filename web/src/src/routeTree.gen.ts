@@ -8,25 +8,25 @@
 // You should NOT make any changes in this file as it will be overwritten.
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
-import { Route as rootRouteImport } from './app/__root'
-import { Route as InterviewRouteRouteImport } from './app/interview/route'
-import { Route as HistoryRouteRouteImport } from './app/history/route'
-import { Route as IndexRouteImport } from './app/index'
-import { Route as HistoryIndexRouteImport } from './app/history/index'
-import { Route as InterviewInterviewIdRouteImport } from './app/interview/$interviewId'
-import { Route as HistoryInterviewIdRouteImport } from './app/history/$interviewId'
-import { Route as ApiTokenRouteImport } from './app/api/token'
-import { Route as ApiInterviewsRouteImport } from './app/api/interviews'
-import { Route as ApiInterviewTokenRouteImport } from './app/api/interview-token'
-import { Route as ApiHistoryRouteImport } from './app/api/history'
-import { Route as ApiCsrfTokenRouteImport } from './app/api/csrf-token'
-import { Route as ApiSpeechCoachingAnalyzeRouteImport } from './app/api/speech-coaching/analyze'
-import { Route as ApiQuestionsGenerateRouteImport } from './app/api/questions/generate'
-import { Route as ApiInterviewsIdRouteImport } from './app/api/interviews/$id'
-import { Route as ApiAudioUploadRouteImport } from './app/api/audio/upload'
-import { Route as ApiAudioBatchUploadRouteImport } from './app/api/audio/batch-upload'
-import { Route as ApiInterviewsIdMessagesRouteImport } from './app/api/interviews/$id/messages'
-import { Route as ApiAudioFilesSplatRouteImport } from './app/api/audio/files/$'
+import { Route as rootRouteImport } from './../app/__root'
+import { Route as InterviewRouteRouteImport } from './../app/interview/route'
+import { Route as HistoryRouteRouteImport } from './../app/history/route'
+import { Route as IndexRouteImport } from './../app/index'
+import { Route as HistoryIndexRouteImport } from './../app/history/index'
+import { Route as InterviewInterviewIdRouteImport } from './../app/interview/$interviewId'
+import { Route as HistoryInterviewIdRouteImport } from './../app/history/$interviewId'
+import { Route as ApiTokenRouteImport } from './../app/api/token'
+import { Route as ApiInterviewsRouteImport } from './../app/api/interviews'
+import { Route as ApiInterviewTokenRouteImport } from './../app/api/interview-token'
+import { Route as ApiHistoryRouteImport } from './../app/api/history'
+import { Route as ApiCsrfTokenRouteImport } from './../app/api/csrf-token'
+import { Route as ApiSpeechCoachingAnalyzeRouteImport } from './../app/api/speech-coaching/analyze'
+import { Route as ApiQuestionsGenerateRouteImport } from './../app/api/questions/generate'
+import { Route as ApiInterviewsIdRouteImport } from './../app/api/interviews/$id'
+import { Route as ApiAudioUploadRouteImport } from './../app/api/audio/upload'
+import { Route as ApiAudioBatchUploadRouteImport } from './../app/api/audio/batch-upload'
+import { Route as ApiInterviewsIdMessagesRouteImport } from './../app/api/interviews/$id/messages'
+import { Route as ApiAudioFilesSplatRouteImport } from './../app/api/audio/files/$'
 
 const InterviewRouteRoute = InterviewRouteRouteImport.update({
   id: '/interview',
@@ -457,3 +457,12 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from '../router.tsx'
+import type { createStart } from '@tanstack/react-start'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+  }
+}

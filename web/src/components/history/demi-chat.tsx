@@ -16,12 +16,6 @@ import { formatTimeOnly } from "@/lib/utils/date";
 const SPEED_OPTIONS = [1, 1.5, 2] as const;
 type Speed = (typeof SPEED_OPTIONS)[number];
 
-interface PlaybackInfo {
-  currentMs: number;
-  startMs: number;
-  endMs: number;
-}
-
 interface DemiChatProps {
   messages: ConversationMessage[];
   audioUrl?: string;
@@ -37,16 +31,21 @@ function formatClipMs(ms: number): string {
 
 export function DemiChat({ messages, audioUrl, isRtl = false }: DemiChatProps) {
   const [playingId, setPlayingId] = useState<string | null>(null);
-  const [playbackInfo, setPlaybackInfo] = useState<PlaybackInfo | null>(null);
+  /** Forces re-renders while audio plays so `getPlaybackProgress()` updates. */
+  const [, setProgressTick] = useState(0);
   const [speed, setSpeed] = useState<Speed>(1);
 
+  // Poll: previously `setPlayingId(getPlayingMessageId())` cleared the row as soon as the user
+  // clicked Play, because `playingMessageId` in playback-utils is only set after async load/seek.
+  // `utilId ?? prev` keeps the optimistic id; clip UI uses message timestamps until util progress exists.
   useEffect(() => {
     const poll = () => {
-      const id = getPlayingMessageId();
-      setPlayingId(id);
-      setPlaybackInfo(id ? getPlaybackProgress() : null);
+      const utilId = getPlayingMessageId();
+      setPlayingId((prev) => utilId ?? prev);
+      setProgressTick((n) => n + 1);
     };
     const interval = setInterval(poll, 100);
+    poll();
     return () => clearInterval(interval);
   }, []);
 
@@ -64,7 +63,6 @@ export function DemiChat({ messages, audioUrl, isRtl = false }: DemiChatProps) {
     if (playingId === message.transcriptId) {
       stopAudio();
       setPlayingId(null);
-      setPlaybackInfo(null);
       return;
     }
 
@@ -87,13 +85,12 @@ export function DemiChat({ messages, audioUrl, isRtl = false }: DemiChatProps) {
       console.error("Failed to play audio:", error);
     } finally {
       setPlayingId(null);
-      setPlaybackInfo(null);
     }
   };
 
   if (messages.length === 0) {
     return (
-      <div className="text-center py-12 text-slate-500">
+      <div className="text-center py-12 text-gray-500">
         <p className="text-sm">No messages in this interview</p>
       </div>
     );
@@ -101,11 +98,13 @@ export function DemiChat({ messages, audioUrl, isRtl = false }: DemiChatProps) {
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      <div className="text-xs font-semibold uppercase tracking-widest mb-4 text-slate-500 px-2">
+      <div className="text-xs font-semibold uppercase tracking-widest mb-4 text-gray-500 px-2">
         Conversation ({messages.length} messages)
       </div>
       <div className="flex-1 overflow-y-auto space-y-4 pr-2">
-        {messages.map((message) => {
+        {(() => {
+          const utilPlayingId = getPlayingMessageId();
+          return messages.map((message) => {
           const isAgent = message.participant === "agent";
           const hasAudio = !!audioUrl;
           const isPlaying = playingId === message.transcriptId;
@@ -116,14 +115,25 @@ export function DemiChat({ messages, audioUrl, isRtl = false }: DemiChatProps) {
             ? isAgent ? "items-start" : "items-end"
             : isAgent ? "items-end" : "items-start";
 
-          const clipDurationMs =
-            isPlaying && playbackInfo
-              ? playbackInfo.endMs - playbackInfo.startMs
-              : 0;
-          const clipElapsedMs =
-            isPlaying && playbackInfo
-              ? Math.max(0, playbackInfo.currentMs - playbackInfo.startMs)
-              : 0;
+          const utilProgress =
+            utilPlayingId === message.transcriptId
+              ? getPlaybackProgress()
+              : null;
+          const fallbackProgress =
+            isPlaying && !utilProgress
+              ? {
+                  currentMs: message.timestampStart,
+                  startMs: message.timestampStart,
+                  endMs: message.timestampEnd,
+                }
+              : null;
+          const effective = utilProgress ?? fallbackProgress;
+          const clipDurationMs = effective
+            ? effective.endMs - effective.startMs
+            : 0;
+          const clipElapsedMs = effective
+            ? Math.max(0, effective.currentMs - effective.startMs)
+            : 0;
           const progressFraction =
             clipDurationMs > 0
               ? Math.min(1, clipElapsedMs / clipDurationMs)
@@ -137,13 +147,13 @@ export function DemiChat({ messages, audioUrl, isRtl = false }: DemiChatProps) {
               <div
                 className={`rounded-lg px-4 py-3 max-w-[85%] ${
                   isAgent
-                    ? "bg-slate-50 text-slate-900 border border-slate-200"
-                    : "bg-indigo-50 text-slate-900 border border-indigo-200"
+                    ? "bg-sky-50/80 text-gray-900 border border-sky-200/70"
+                    : "bg-indigo-50 text-gray-900 border border-indigo-200"
                 }`}
               >
                 {/* Header: label + play button */}
                 <div className="flex items-center justify-between gap-3 mb-2">
-                  <div className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
+                  <div className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
                     {isAgent ? "Agent" : "You"}
                   </div>
                   {hasAudio && (
@@ -152,7 +162,7 @@ export function DemiChat({ messages, audioUrl, isRtl = false }: DemiChatProps) {
                       className={`p-1.5 rounded-full transition-all shadow-sm ${
                         isPlaying
                           ? "bg-indigo-600 text-white"
-                          : "bg-white/80 hover:bg-indigo-100 text-slate-600 hover:text-indigo-700"
+                          : "bg-white/80 hover:bg-indigo-100 text-gray-600 hover:text-indigo-700"
                       }`}
                       title={isPlaying ? "Stop" : "Play"}
                     >
@@ -175,11 +185,11 @@ export function DemiChat({ messages, audioUrl, isRtl = false }: DemiChatProps) {
 
                 {/* Player controls — visible only while this message is playing */}
                 {isPlaying && (
-                  <div className="mt-3 pt-2.5 border-t border-slate-200/70 space-y-2">
+                  <div className="mt-3 pt-2.5 border-t border-sky-200/70 space-y-2">
                     {/* Scrub bar */}
                     <div
                       className="relative h-1.5 rounded-full cursor-pointer"
-                      style={{ background: isAgent ? "#e2e8f0" : "#c7d2fe" }}
+                      style={{ background: isAgent ? "#e0f2fe" : "#c7d2fe" }}
                       onClick={handleSeek}
                       title="Click to seek"
                     >
@@ -197,7 +207,7 @@ export function DemiChat({ messages, audioUrl, isRtl = false }: DemiChatProps) {
 
                     {/* Time + speed controls */}
                     <div className="flex items-center justify-center">
-                      <span className="text-[10px] tabular-nums text-slate-400">
+                      <span className="text-[10px] tabular-nums text-gray-400">
                         {formatClipMs(clipElapsedMs)}
                         <span className="mx-0.5 opacity-50">/</span>
                         {formatClipMs(clipDurationMs)}
@@ -210,7 +220,7 @@ export function DemiChat({ messages, audioUrl, isRtl = false }: DemiChatProps) {
                             className={`px-1.5 py-0.5 rounded text-[10px] font-semibold transition-colors ${
                               speed === r
                                 ? "bg-indigo-600 text-white"
-                                : "text-slate-400 hover:text-indigo-600 hover:bg-indigo-50"
+                                : "text-gray-400 hover:text-indigo-600 hover:bg-indigo-50"
                             }`}
                           >
                             {r}×
@@ -225,7 +235,8 @@ export function DemiChat({ messages, audioUrl, isRtl = false }: DemiChatProps) {
               </div>
             </div>
           );
-        })}
+        });
+        })()}
       </div>
     </div>
   );
@@ -233,7 +244,7 @@ export function DemiChat({ messages, audioUrl, isRtl = false }: DemiChatProps) {
 
 function MessageTimestamp({ timestamp }: { timestamp: number }) {
   return (
-    <div className="mt-2 text-[10px] text-slate-400">
+    <div className="mt-2 text-[10px] text-gray-400">
       {formatTimeOnly(timestamp)}
     </div>
   );

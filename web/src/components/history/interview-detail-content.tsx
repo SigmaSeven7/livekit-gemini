@@ -10,14 +10,13 @@ interface InterviewDetailContentProps {
 }
 
 export function InterviewDetailContent({ interviewId }: InterviewDetailContentProps) {
-    console.log("interviewId", interviewId);
   const { data: interview, isLoading, error } = useInterview(interviewId);
 
   if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[400px]">
         <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
-        <p className="mt-4 text-sm text-slate-600">Loading interview...</p>
+        <p className="mt-4 text-sm text-gray-600">Loading interview...</p>
       </div>
     );
   }
