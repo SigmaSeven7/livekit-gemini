@@ -18,7 +18,6 @@ import { Route as HistoryInterviewIdRouteImport } from './app/history/$interview
 import { Route as ApiTokenRouteImport } from './app/api/token'
 import { Route as ApiInterviewsRouteImport } from './app/api/interviews'
 import { Route as ApiInterviewTokenRouteImport } from './app/api/interview-token'
-import { Route as ApiHistoryRouteImport } from './app/api/history'
 import { Route as ApiCsrfTokenRouteImport } from './app/api/csrf-token'
 import { Route as ApiSpeechCoachingAnalyzeRouteImport } from './app/api/speech-coaching/analyze'
 import { Route as ApiQuestionsGenerateRouteImport } from './app/api/questions/generate'
@@ -73,11 +72,6 @@ const ApiInterviewTokenRoute = ApiInterviewTokenRouteImport.update({
   path: '/api/interview-token',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiHistoryRoute = ApiHistoryRouteImport.update({
-  id: '/api/history',
-  path: '/api/history',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ApiCsrfTokenRoute = ApiCsrfTokenRouteImport.update({
   id: '/api/csrf-token',
   path: '/api/csrf-token',
@@ -125,7 +119,6 @@ export interface FileRoutesByFullPath {
   '/history': typeof HistoryRouteRouteWithChildren
   '/interview': typeof InterviewRouteRouteWithChildren
   '/api/csrf-token': typeof ApiCsrfTokenRoute
-  '/api/history': typeof ApiHistoryRoute
   '/api/interview-token': typeof ApiInterviewTokenRoute
   '/api/interviews': typeof ApiInterviewsRouteWithChildren
   '/api/token': typeof ApiTokenRoute
@@ -144,7 +137,6 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/interview': typeof InterviewRouteRouteWithChildren
   '/api/csrf-token': typeof ApiCsrfTokenRoute
-  '/api/history': typeof ApiHistoryRoute
   '/api/interview-token': typeof ApiInterviewTokenRoute
   '/api/interviews': typeof ApiInterviewsRouteWithChildren
   '/api/token': typeof ApiTokenRoute
@@ -165,7 +157,6 @@ export interface FileRoutesById {
   '/history': typeof HistoryRouteRouteWithChildren
   '/interview': typeof InterviewRouteRouteWithChildren
   '/api/csrf-token': typeof ApiCsrfTokenRoute
-  '/api/history': typeof ApiHistoryRoute
   '/api/interview-token': typeof ApiInterviewTokenRoute
   '/api/interviews': typeof ApiInterviewsRouteWithChildren
   '/api/token': typeof ApiTokenRoute
@@ -187,7 +178,6 @@ export interface FileRouteTypes {
     | '/history'
     | '/interview'
     | '/api/csrf-token'
-    | '/api/history'
     | '/api/interview-token'
     | '/api/interviews'
     | '/api/token'
@@ -206,7 +196,6 @@ export interface FileRouteTypes {
     | '/'
     | '/interview'
     | '/api/csrf-token'
-    | '/api/history'
     | '/api/interview-token'
     | '/api/interviews'
     | '/api/token'
@@ -226,7 +215,6 @@ export interface FileRouteTypes {
     | '/history'
     | '/interview'
     | '/api/csrf-token'
-    | '/api/history'
     | '/api/interview-token'
     | '/api/interviews'
     | '/api/token'
@@ -247,7 +235,6 @@ export interface RootRouteChildren {
   HistoryRouteRoute: typeof HistoryRouteRouteWithChildren
   InterviewRouteRoute: typeof InterviewRouteRouteWithChildren
   ApiCsrfTokenRoute: typeof ApiCsrfTokenRoute
-  ApiHistoryRoute: typeof ApiHistoryRoute
   ApiInterviewTokenRoute: typeof ApiInterviewTokenRoute
   ApiInterviewsRoute: typeof ApiInterviewsRouteWithChildren
   ApiTokenRoute: typeof ApiTokenRoute
@@ -321,13 +308,6 @@ declare module '@tanstack/react-router' {
       path: '/api/interview-token'
       fullPath: '/api/interview-token'
       preLoaderRoute: typeof ApiInterviewTokenRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/history': {
-      id: '/api/history'
-      path: '/api/history'
-      fullPath: '/api/history'
-      preLoaderRoute: typeof ApiHistoryRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/csrf-token': {
@@ -444,7 +424,6 @@ const rootRouteChildren: RootRouteChildren = {
   HistoryRouteRoute: HistoryRouteRouteWithChildren,
   InterviewRouteRoute: InterviewRouteRouteWithChildren,
   ApiCsrfTokenRoute: ApiCsrfTokenRoute,
-  ApiHistoryRoute: ApiHistoryRoute,
   ApiInterviewTokenRoute: ApiInterviewTokenRoute,
   ApiInterviewsRoute: ApiInterviewsRouteWithChildren,
   ApiTokenRoute: ApiTokenRoute,

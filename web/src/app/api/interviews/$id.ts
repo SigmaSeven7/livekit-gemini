@@ -1,17 +1,17 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { validate as uuidValidate } from "uuid";
+
 import prisma from "@/lib/prisma";
-import { ConversationMessage, InterviewStatus } from "@/types/conversation";
+import { interviewRowToDetailDto } from "@/lib/server/interview-detail-response";
+import { refreshInterviewAudioUrlFromAgent } from "@/lib/server/interview-audio-url";
 import {
   processTranscriptsWithGroq,
   RawTranscriptSegment,
 } from "@/lib/services/transcript-processor";
-import { refreshInterviewAudioUrlFromAgent } from "@/lib/server/interview-audio-url";
-
-interface UpdateInterviewBody {
-  status?: InterviewStatus;
-  config?: Record<string, unknown>;
-  messages?: ConversationMessage[];
-}
+import {
+  parseJsonBody,
+  updateInterviewBodySchema,
+} from "@/lib/validation/interview";
 
 const AUDIO_SERVER_URL = process.env.AUDIO_SERVER_URL || "http://localhost:3001";
 
@@ -21,6 +21,13 @@ export const Route = createFileRoute("/api/interviews/$id")({
       GET: async ({ params }) => {
         try {
           const { id } = params;
+
+          if (!uuidValidate(id)) {
+            return Response.json(
+              { error: "Invalid interview ID format" },
+              { status: 400 },
+            );
+          }
 
           const interview = await prisma.interview.findUnique({
             where: { id },
@@ -38,18 +45,7 @@ export const Route = createFileRoute("/api/interviews/$id")({
             interview.audioUrl,
           );
 
-          return Response.json({
-            id: interview.id,
-            createdAt: interview.createdAt,
-            updatedAt: interview.updatedAt,
-            status: interview.status,
-            config: interview.config ? JSON.parse(interview.config) : null,
-            messages: JSON.parse(interview.transcript),
-            processedTranscript: interview.processedTranscript
-              ? JSON.parse(interview.processedTranscript)
-              : [],
-            audioUrl,
-          });
+          return Response.json(interviewRowToDetailDto(interview, audioUrl));
         } catch (error) {
           console.error("Get interview error:", error);
           return Response.json(
@@ -61,7 +57,17 @@ export const Route = createFileRoute("/api/interviews/$id")({
       PUT: async ({ request, params }) => {
         try {
           const { id } = params;
-          const body: UpdateInterviewBody = await request.json();
+
+          if (!uuidValidate(id)) {
+            return Response.json(
+              { error: "Invalid interview ID format" },
+              { status: 400 },
+            );
+          }
+
+          const parsed = await parseJsonBody(request, updateInterviewBodySchema);
+          if (!parsed.ok) return parsed.response;
+          const body = parsed.data;
 
           const existing = await prisma.interview.findUnique({
             where: { id },
@@ -99,11 +105,13 @@ export const Route = createFileRoute("/api/interviews/$id")({
                 rawTranscripts as RawTranscriptSegment[],
               );
 
+              const messages = body.messages ?? [];
+
               const interview = await prisma.interview.update({
                 where: { id },
                 data: {
                   status: "completed",
-                  transcript: JSON.stringify(body.messages || []),
+                  transcript: JSON.stringify(messages),
                   processedTranscript: JSON.stringify(processedMessages),
                   audioUrl: audioUrl,
                 },
@@ -123,18 +131,9 @@ export const Route = createFileRoute("/api/interviews/$id")({
                 );
               }
 
-              return Response.json({
-                id: interview.id,
-                createdAt: interview.createdAt,
-                updatedAt: interview.updatedAt,
-                status: interview.status,
-                config: interview.config ? JSON.parse(interview.config) : null,
-                transcript: JSON.parse(interview.transcript),
-                processedTranscript: interview.processedTranscript
-                  ? JSON.parse(interview.processedTranscript)
-                  : [],
-                audioUrl: interview.audioUrl,
-              });
+              return Response.json(
+                interviewRowToDetailDto(interview, interview.audioUrl),
+              );
             } catch (processingError) {
               console.error(
                 "Error processing interview completion:",
@@ -170,14 +169,9 @@ export const Route = createFileRoute("/api/interviews/$id")({
             data: updateData,
           });
 
-          return Response.json({
-            id: interview.id,
-            createdAt: interview.createdAt,
-            updatedAt: interview.updatedAt,
-            status: interview.status,
-            config: interview.config ? JSON.parse(interview.config) : null,
-            messages: JSON.parse(interview.transcript),
-          });
+          return Response.json(
+            interviewRowToDetailDto(interview, interview.audioUrl),
+          );
         } catch (error) {
           console.error("Update interview error:", error);
           return Response.json(
@@ -189,6 +183,13 @@ export const Route = createFileRoute("/api/interviews/$id")({
       DELETE: async ({ params }) => {
         try {
           const { id } = params;
+
+          if (!uuidValidate(id)) {
+            return Response.json(
+              { error: "Invalid interview ID format" },
+              { status: 400 },
+            );
+          }
 
           const existing = await prisma.interview.findUnique({
             where: { id },

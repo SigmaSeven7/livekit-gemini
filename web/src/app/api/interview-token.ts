@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { AccessToken } from "livekit-server-sdk";
-import { RoomAgentDispatch, RoomConfiguration } from "@livekit/protocol";
+
+import { createLiveKitRoomJwt } from "@/lib/server/livekit-room-token";
 
 export const Route = createFileRoute("/api/interview-token")({
   server: {
@@ -28,32 +28,14 @@ export const Route = createFileRoute("/api/interview-token")({
             );
           }
 
-          const metadata = JSON.stringify(config);
-
-          const at = new AccessToken(apiKey, apiSecret, {
+          const { accessToken } = await createLiveKitRoomJwt({
+            roomName,
             identity: "candidate-" + Math.random().toString(36).slice(2, 7),
-            metadata: metadata,
-          });
-
-          at.addGrant({
-            room: roomName,
-            roomJoin: true,
-            canPublish: true,
-            canPublishData: true,
-            canSubscribe: true,
-          });
-
-          at.roomConfig = new RoomConfiguration({
-            name: roomName,
-            agents: [
-              new RoomAgentDispatch({
-                agentName: "gemini-playground",
-              }),
-            ],
+            metadata: JSON.stringify(config),
           });
 
           return Response.json({
-            accessToken: await at.toJwt(),
+            accessToken,
             url: wsUrl,
           });
         } catch (error) {

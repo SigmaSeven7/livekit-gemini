@@ -1,10 +1,12 @@
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
-import { Interview } from '@/types/interview';
+
+import { fetchInterviewDto } from '@/lib/api/interviews';
+import type { InterviewDto } from '@/types/interview';
 
 
 
 interface InterviewsResponse {
-  data: Interview[];
+  data: InterviewDto[];
   nextCursor: string | null;
   hasMore: boolean;
 }
@@ -41,19 +43,9 @@ export function useInterviews() {
  * Uses TanStack Query's useQuery with 1 minute cache
  */
 export function useInterview(id: string) {
-  return useQuery<Interview>({
+  return useQuery<InterviewDto>({
     queryKey: ['interview', id],
-    queryFn: async () => {
-      const url = new URL('/api/history', window.location.origin);
-      url.searchParams.set('id', id);
-
-      const response = await fetch(url.toString());
-     
-      if (!response.ok) {
-        throw new Error('Failed to fetch interview');
-      }
-      return response.json();
-    },
+    queryFn: async () => fetchInterviewDto(id),
     enabled: !!id,
     staleTime: 60 * 1000, // 1 minute cache
   });

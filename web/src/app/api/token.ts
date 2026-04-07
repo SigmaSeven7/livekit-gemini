@@ -1,7 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { AccessToken } from "livekit-server-sdk";
-import { RoomAgentDispatch, RoomConfiguration } from "@livekit/protocol";
 import { PlaygroundState } from "@/data/playground-state";
+import { createLiveKitRoomJwt } from "@/lib/server/livekit-room-token";
 
 export const Route = createFileRoute("/api/token")({
   server: {
@@ -40,11 +39,6 @@ export const Route = createFileRoute("/api/token")({
           }
 
           const roomName = Math.random().toString(36).slice(7);
-          const apiKey = process.env.LIVEKIT_API_KEY;
-          const apiSecret = process.env.LIVEKIT_API_SECRET;
-          if (!apiKey || !apiSecret) {
-            throw new Error("LIVEKIT_API_KEY and LIVEKIT_API_SECRET must be set");
-          }
 
           const metadata = {
             instructions: instructions,
@@ -57,30 +51,14 @@ export const Route = createFileRoute("/api/token")({
             gemini_api_key: geminiAPIKey,
           };
 
-          const at = new AccessToken(apiKey, apiSecret, {
+          const { accessToken } = await createLiveKitRoomJwt({
+            roomName,
             identity: "human",
             metadata: JSON.stringify(metadata),
-          });
-
-          at.addGrant({
-            room: roomName,
-            roomJoin: true,
-            canPublish: true,
-            canPublishData: true,
-            canSubscribe: true,
             canUpdateOwnMetadata: true,
           });
-
-          at.roomConfig = new RoomConfiguration({
-            name: roomName,
-            agents: [
-              new RoomAgentDispatch({
-                agentName: "gemini-playground",
-              }),
-            ],
-          });
           return Response.json({
-            accessToken: await at.toJwt(),
+            accessToken,
             url: process.env.LIVEKIT_URL,
           });
         } catch (error) {

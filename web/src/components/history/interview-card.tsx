@@ -88,7 +88,7 @@ export function InterviewCard({ id, status, createdAt, messageCount, config, onD
         <div className="flex items-start justify-between mb-4">
           <div
             className={cn(
-              "flex-1 min-w-0 text-start",
+              "flex-1 min-w-0 text-start text-gray-300",
               onSelect && onDelete && "px-8",
               onSelect && !onDelete && (isRtl ? "pr-8" : "pl-8"),
               onDelete && !onSelect && (isRtl ? "pl-8" : "pr-8"),

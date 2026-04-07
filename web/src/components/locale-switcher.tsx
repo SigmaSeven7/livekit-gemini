@@ -66,7 +66,9 @@ export function LocaleSwitcher() {
             key={loc}
             value={loc}
             className={cn(
-              "rounded-lg py-2 text-gray-700",
+              "rounded-lg py-2 text-center text-gray-700",
+              "pl-8 pr-8",
+              "[&>span:last-child]:block [&>span:last-child]:w-full",
               "focus:bg-sky-50 data-[highlighted]:bg-sky-50",
               "data-[state=checked]:bg-indigo-50/90 data-[state=checked]:text-gray-800",
             )}

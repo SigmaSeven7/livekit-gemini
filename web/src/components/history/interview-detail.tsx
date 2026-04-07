@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { DemiChat } from "./demi-chat";
-import { Interview } from "@/types/interview";
+import type { InterviewDto } from "@/types/interview";
 import { formatDateLong } from "@/lib/utils/date";
 import { STATUS_COLORS } from "@/lib/constants/interview";
 import { interviewStatusLabel } from "@/lib/interview-status-label";
@@ -18,7 +18,7 @@ import {
 import { concatenateMessagesWithSameStartTime } from "@/lib/audio/playback-utils";
 
 interface InterviewDetailProps {
-  interview: Interview;
+  interview: InterviewDto;
 }
 
 export function InterviewDetail({ interview }: InterviewDetailProps) {

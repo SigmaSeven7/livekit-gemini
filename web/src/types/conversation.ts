@@ -58,15 +58,3 @@ export interface InterviewRecord {
   config: string | null;
   transcript: string; // JSON string of ConversationMessage[]
 }
-
-/**
- * Parsed interview with typed transcript
- */
-export interface Interview {
-  id: string;
-  createdAt: Date;
-  updatedAt: Date;
-  status: InterviewStatus;
-  config: Record<string, unknown> | null;
-  messages: ConversationMessage[];
-}

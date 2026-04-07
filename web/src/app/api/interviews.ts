@@ -1,19 +1,20 @@
 import { createFileRoute } from "@tanstack/react-router";
-import prisma from "@/lib/prisma";
-import { InterviewStatus } from "@/types/conversation";
 
-interface CreateInterviewBody {
-  config?: Record<string, unknown>;
-  status?: InterviewStatus;
-  questions?: unknown[];
-}
+import prisma from "@/lib/prisma";
+import {
+  createInterviewBodySchema,
+  parseJsonBody,
+} from "@/lib/validation/interview";
+import type { InterviewStatus } from "@/types/conversation";
 
 export const Route = createFileRoute("/api/interviews")({
   server: {
     handlers: {
       POST: async ({ request }) => {
         try {
-          const body: CreateInterviewBody = await request.json();
+          const parsed = await parseJsonBody(request, createInterviewBodySchema);
+          if (!parsed.ok) return parsed.response;
+          const body = parsed.data;
 
           const interview = await prisma.interview.create({
             data: {
@@ -26,11 +27,12 @@ export const Route = createFileRoute("/api/interviews")({
 
           return Response.json({
             id: interview.id,
-            createdAt: interview.createdAt,
-            updatedAt: interview.updatedAt,
+            createdAt: interview.createdAt.toISOString(),
+            updatedAt: interview.updatedAt.toISOString(),
             status: interview.status,
             config: interview.config ? JSON.parse(interview.config) : null,
-            messages: [],
+            transcript: [],
+            processedTranscript: [],
             questions: interview.questions ? JSON.parse(interview.questions) : [],
           });
         } catch (error) {

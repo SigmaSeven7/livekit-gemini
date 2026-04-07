@@ -576,11 +576,8 @@ export function InterviewPage({ roomId }: { roomId: string }) {
 
         const init = async () => {
             try {
-                const interviewRes = await fetch(`/api/history?id=${roomId}`);
-                if (!interviewRes.ok) {
-                    throw new Error(`Failed to load interview: ${interviewRes.status}`);
-                }
-                const interview = await interviewRes.json();
+                const { fetchInterviewDto } = await import("@/lib/api/interviews");
+                const interview = await fetchInterviewDto(roomId);
                 if (!interview?.config) {
                     throw new Error("Interview configuration not found.");
                 }

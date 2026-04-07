@@ -15,6 +15,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { useToast } from "@/hooks/use-toast";
+import { deleteAllInterviews, deleteInterview } from "@/lib/api/interviews";
 import {
   history_cancel,
   history_delete,
@@ -48,6 +50,7 @@ export const Route = createFileRoute("/history/")({
 });
 
 function HistoryPage() {
+  const { toast } = useToast();
   const queryClient = useQueryClient();
   const {
     data,
@@ -104,48 +107,40 @@ function HistoryPage() {
       setSelectedIds(new Set());
     },
     onError: (err: Error) => {
-      alert(err.message || "Failed to delete all interviews");
+      toast({
+        variant: "destructive",
+        title: String(history_error_title()),
+        description: err.message || String(history_error_body()),
+      });
     },
   });
 
   const deleteSelectedMutation = useMutation({
     mutationFn: async (ids: string[]) => {
-      const results = await Promise.all(
-        ids.map(async (id) => {
-          const response = await fetch(`/api/interviews/${id}`, {
-            method: "DELETE",
-          });
-          return { id, ok: response.ok };
-        }),
+      const results = await Promise.allSettled(
+        ids.map((id) => deleteInterview(id)),
       );
-      const failed = results.filter((r) => !r.ok);
+      const failed = results.filter((r) => r.status === "rejected");
       if (failed.length > 0) {
         throw new Error(`Failed to delete ${failed.length} interview(s)`);
       }
-      return results;
+      return ids;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["interviews"] });
       setSelectedIds(new Set());
     },
     onError: (err: Error) => {
-      alert(err.message || "Failed to delete selected interviews");
+      toast({
+        variant: "destructive",
+        title: String(history_error_title()),
+        description: err.message || String(history_error_body()),
+      });
     },
   });
 
   const deleteInterviewMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const response = await fetch(`/api/interviews/${id}`, {
-        method: "DELETE",
-      });
-
-      if (!response.ok) {
-        const errJson = await response.json();
-        throw new Error(errJson.error || "Failed to delete interview");
-      }
-
-      return response.json();
-    },
+    mutationFn: (id: string) => deleteInterview(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["interviews"] });
       setInterviewToDelete(null);
@@ -156,7 +151,11 @@ function HistoryPage() {
       });
     },
     onError: (err: Error) => {
-      alert(err.message || "Failed to delete interview");
+      toast({
+        variant: "destructive",
+        title: String(history_error_title()),
+        description: err.message || String(history_error_body()),
+      });
     },
   });
 

@@ -206,7 +206,7 @@ export function DemiChat({ messages, audioUrl, isRtl = false }: DemiChatProps) {
                     </div>
 
                     {/* Time + speed controls */}
-                    <div className="flex items-center justify-center">
+                    <div className="flex items-center justify-center gap-4">
                       <span className="text-[10px] tabular-nums text-gray-400">
                         {formatClipMs(clipElapsedMs)}
                         <span className="mx-0.5 opacity-50">/</span>

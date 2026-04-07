@@ -1,13 +1,10 @@
 import { InterviewStatus, ConversationMessage } from "./conversation";
 
 /**
- * Interview type matching the Prisma schema.
- * Represents a parsed/serialized interview where:
- * - Dates are serialized as ISO strings
- * - Config is parsed from JSON string to object
- * - Transcript is parsed from JSON string to ConversationMessage array
+ * Canonical API/client shape for a single interview (GET /api/interviews/:id).
+ * Dates are ISO strings; transcript fields are parsed from DB JSON.
  */
-export interface Interview {
+export interface InterviewDto {
   /** Unique identifier (UUID) */
   id: string;
   /** Creation timestamp as ISO string */
@@ -24,7 +21,7 @@ export interface Interview {
   processedTranscript?: ConversationMessage[];
   /** Audio URL from getAudioFile endpoint */
   audioUrl?: string | null;
-  /** Number of messages in the conversation (from Prisma or audio server) */
+  /** Number of messages in the conversation (list endpoint only) */
   messageCount?: number;
   /** Generated interview questions */
   questions?: Array<{
@@ -33,3 +30,6 @@ export interface Interview {
     hints: string[];
   }>;
 }
+
+/** @deprecated Use `InterviewDto` */
+export type Interview = InterviewDto;
