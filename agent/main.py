@@ -22,6 +22,7 @@ from livekit.agents import (
     Agent,
     AgentSession,
     AutoSubscribe,
+    ChatMessage,
     JobContext,
     WorkerOptions,
     WorkerType,
@@ -493,6 +494,8 @@ class SessionManager:
         # 3. Process Transcripts and apply Queue bounds
         @self.current_session.on("conversation_item_added")
         def on_item_added(event: ConversationItemAddedEvent):
+            if not isinstance(event.item, ChatMessage):
+                return
             text = ""
             if hasattr(event.item, "text_content") and event.item.text_content:
                 text = event.item.text_content
